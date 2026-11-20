@@ -165,7 +165,7 @@ The screen already shows the section seen from the lidar bottom, which is where 
 ### Steps
 
 1. Drawing screen with plain sketch lines, points collected and drawn, Undo and Clear. No saving. Written 2026-11-20 (firmware/src/sketch.cpp, Draw on the scan screen in place of the Cal button, calibration now only by holding the screen at power-on), to be tried on the board.
-2. Finishing a stroke as SexyTopo does (close, simplify, snap). Each copied from the named SexyTopo file.
+2. Finishing a stroke as SexyTopo does (close, simplify, snap). Each copied from the named SexyTopo file. Written 2026-11-20 for plain lines (snap to line ends and close into a loop, joined lines become one, a tap leaves a dot, Douglas-Peucker simplify), with tests/sketch run on the computer (13 checks pass). Clip to Walls and closing outlines come with the other line types. Snap to Lines and its distance are options in SexyTopo, fixed on and 10 px here for now (user 2026-11-20).
 3. Save and load the sketch file, show it with the scan, fetch with board_link.py.
 4. to_sexytopo.py and the shared test files, and a check in SexyTopo on the phone.
 5. The other line types with a picker, and wall orientation.

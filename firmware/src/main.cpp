@@ -43,6 +43,7 @@ constexpr int UNDO_X = 4, CLEAR_X = 82, DONE_X = 160, EDIT_W = 76;
 constexpr unsigned long LIDAR_CHECK_MS = 2000;  // how often to look for a lidar while none is found
 constexpr int SCAN_TURNS = 1;
 constexpr uint16_t LINE_COLOUR = TFT_WHITE;
+constexpr int SNAP_PX = 10;  // SexyTopo's SNAP_TO_LINE_SENSITIVITY_DP, about 1 px per dp on this screen
 
 cyd::Display lcd;
 ScanView scanView;
@@ -269,7 +270,8 @@ void penOnDrawing(bool touched, int x, int y) {
   static int lastX, lastY;
   const bool onView = touched && scanView.inView(x, y);
   if (sketch.activePath() && !onView) {
-    sketch.finishPath();
+    sketch.finishPath(SNAP_PX * scanView.metresPerPixel());
+    drawView();  // the line as finished, snapped and simplified
     drawButtons();  // Clear may now be possible
   } else if (onView && !sketch.activePath()) {
     sketch.startPath(scanView.toSketch(x, y));

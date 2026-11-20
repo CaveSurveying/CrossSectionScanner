@@ -18,6 +18,7 @@ class ScanView {
   // Between screen pixels and sketch coordinates (sketch.h), using the fit of the last draw
   Coord toSketch(int px, int py) const;
   void toScreen(Coord c, int &px, int &py) const;
+  float metresPerPixel() const { return 1 / (scale * 1000); }
   bool inView(int px, int py) const { return px >= 0 && px < size && py >= 0 && py < size; }
 
  private:
