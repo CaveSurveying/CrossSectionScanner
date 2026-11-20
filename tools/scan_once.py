@@ -115,10 +115,10 @@ def make_record(info, revolutions, source):
     }
 
 
-def save(record):
-    """Save a scan record to scans/ and return its path."""
+def save(record, name=None):
+    """Save a scan record to scans/ (named by the time unless a name is given) and return its path."""
     SCANS_DIR.mkdir(exist_ok=True)
-    path = SCANS_DIR / f"scan-{datetime.now():%Y%m%d-%H%M%S}.json"
+    path = SCANS_DIR / f"{name or f'scan-{datetime.now():%Y%m%d-%H%M%S}'}.json"
     path.write_text(json.dumps(record, indent=1))
     return path
 

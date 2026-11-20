@@ -18,6 +18,12 @@ void ScanView::clear(const String &newName) {
   pointCount = turns = 0;
 }
 
+void ScanView::addLine(const String &line) {
+  float deg, mm;
+  if (line.startsWith("T")) turns++;
+  else if (line.startsWith("P ") && sscanf(line.c_str() + 2, "%f %f", &deg, &mm) == 2 && mm > 0) addPoint(deg, mm);
+}
+
 void ScanView::addPoint(float deg, float mm) {
   if (pointCount >= MAX_POINTS || turns == 0) return;
   const float a = radians(deg);
@@ -26,7 +32,7 @@ void ScanView::addPoint(float deg, float mm) {
 }
 
 void ScanView::draw(cyd::Display &lcd, int size) const {
-  lcd.fillRect(0, 0, size, size + 66, TFT_BLACK);
+  lcd.fillRect(0, 0, size, size + NOTES_H, TFT_BLACK);
 
   // Fit the scan's own extent (not the lidar) into the view, keeping the scale equal both ways
   int minX = 0, maxX = 0, minY = 0, maxY = 0;
@@ -63,11 +69,9 @@ void ScanView::draw(cyd::Display &lcd, int size) const {
 
   lcd.setTextColor(TFT_WHITE, TFT_BLACK);
   lcd.setTextSize(1);
-  lcd.setCursor(4, size + 6);
+  lcd.setCursor(4, size + 3);
   lcd.print(name);
-  lcd.setCursor(4, size + 20);
-  lcd.printf("%d turns, %d points", turns, pointCount);
-  lcd.setCursor(4, size + 34);
-  lcd.printf("grid %.1f m, red arrow = 0 deg", grid / 1000.0);
-  for (int t = 0; t < turns && t < 10; t++) lcd.fillRect(4 + t * 22, size + 50, 18, 10, turnColour(t));
+  lcd.setCursor(4, size + 13);
+  if (turns > 1) lcd.printf("%d turns, ", turns);
+  lcd.printf("%d points, grid %.1f m", pointCount, grid / 1000.0);
 }

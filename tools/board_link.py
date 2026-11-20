@@ -1,18 +1,26 @@
 #!/usr/bin/env python3
 """Debug link to the scanner over its USB port (firmware/ must be on the board).
 
-  board_link.py              until Ctrl-C, show what the board reports and save each scan it takes
-  board_link.py --scan       ask the board for one scan, save it, then keep listening
-  board_link.py --status     show whether the board has a lidar, then stop
+  board_link.py                until Ctrl-C, show what the board reports and save each scan it takes
+  board_link.py --scan         ask the board for one scan, save it, then keep listening
+  board_link.py --status       show whether the board has a lidar, then stop
+  board_link.py --list         list the scans saved on the board
+  board_link.py --fetch        save the board's scans in scans/ (ones already there are skipped)
+  board_link.py --fetch --clear   and then delete them from the board, once each is checked here
 
-Opening the port resets the board, so it starts from its start-up screen.
+Board scans are saved as scans/board-<name>.json, e.g. board-b0007-003 is scan 3 after the
+board's 7th start-up. The board has no clock, so their time is null and received is when they
+reached the computer.
 """
 import argparse
+import json
+import sys
 import time
+from datetime import datetime
 
 import serial
 
-from scan_once import make_record, save
+from scan_once import SCANS_DIR, make_record, save
 
 BOARD_PORT = "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0"
 BOARD_BAUD = 460800
@@ -27,7 +35,7 @@ class Board:
         # Opening the port still resets the ESP32 here, so let it boot and drop its boot messages
         time.sleep(1.5)
         self.port.reset_input_buffer()
-        self.port.write(b"?\n")
+        self.send("?")
         print("Waiting for the board (finish touch calibration if it is showing)")
         self.wait_for("READY")
 
@@ -41,9 +49,10 @@ class Board:
         self.port.write(f"{line}\n".encode())
 
     def wait_for(self, word):
+        """Wait for a line starting with word and return it, showing anything else."""
         while True:
             line = self.readline()
-            if word in line:
+            if line.startswith(word):
                 return line
             if line:
                 print(f"board: {line}")
@@ -58,57 +67,123 @@ def parse_lidar_info(line):
     return {"model": int(model), "firmware": firmware, "hardware": int(hardware), "serial": serial_number}
 
 
-def receive_scan(board, info):
-    """Read a scan (after SCANDATA start) and return it as a record."""
-    revolutions = []
+def receive_scan(board):
+    """Read a scan (after SCANDATA start) and return it as a record, with the bytes of text read."""
+    revolutions, info, extra, size = [], None, {}, 0
     while True:
         line = board.readline()
         if line == "SCANDATA end":
-            return make_record(info, revolutions, "board")
-        if line == "T":
-            revolutions.append([])
-        elif line.startswith("P ") and revolutions:
-            deg, mm, quality = line.split()[1:4]
-            revolutions[-1].append({"quality": int(quality), "angle_deg": float(deg), "distance_mm": float(mm)})
-        elif not line:
+            break
+        if not line:
             raise RuntimeError("scan stopped part way")
+        size += len(line) + 1
+        word, *fields = line.split()
+        if word == "T":
+            revolutions.append([])
+        elif word == "P" and revolutions:
+            deg, mm, quality = fields[:3]
+            revolutions[-1].append({"quality": int(quality), "angle_deg": float(deg), "distance_mm": float(mm)})
+        elif word == "NAME":
+            extra["board_name"] = fields[0]
+        elif word == "BOOT":
+            extra.update(start_up=int(fields[0]), scan=int(fields[1]), ms_since_start_up=int(fields[2]))
+        elif word == "LIDAR":
+            info = parse_lidar_info(line)
+    if "board_name" not in extra:
+        raise RuntimeError("scan has no name")
+    record = make_record(info, revolutions, "board")
+    record.update(time=None, received=datetime.now().astimezone().isoformat(timespec="seconds"), **extra)
+    return record, size
+
+
+def file_name(board_name):
+    return f"board-{board_name}"
+
+
+def save_board_scan(record):
+    path = save(record, file_name(record["board_name"]))
+    points = sum(len(r) for r in record["revolutions"])
+    print(f"{path.name}: {len(record['revolutions'])} turns, {points} points")
 
 
 def listen(board):
     print("Listening, Ctrl-C to stop")
-    info = None
     while True:
         line = board.readline()
-        if not line:
-            continue
         if line == "SCANDATA start":
             try:
-                record = receive_scan(board, info)
-                path = save(record)
-                points = sum(len(r) for r in record["revolutions"])
-                print(f"{path.name}: {len(record['revolutions'])} turns, {points} points")
+                save_board_scan(receive_scan(board)[0])
             except Exception as e:
                 print(f"scan not saved: {e}")
-            continue
-        if line.startswith("LIDAR "):
-            info = parse_lidar_info(line) or info
-        print(f"board: {line}")
+        elif line:
+            print(f"board: {line}")
+
+
+def board_list(board):
+    """Saved scans on the board as {name: bytes}, and the LIST end line."""
+    board.send("LIST")
+    files = {}
+    while True:
+        line = board.wait_for("")
+        if line.startswith("FILE "):
+            _, name, size = line.split()
+            files[name] = int(size)
+        elif line.startswith("LIST end"):
+            return files, line
+
+
+def fetch(board, clear):
+    files, _ = board_list(board)
+    fetched = skipped = deleted = 0
+    for name, size in files.items():
+        path = SCANS_DIR / f"{file_name(name)}.json"
+        if path.exists():
+            skipped += 1
+        else:
+            board.send(f"GET {name}")
+            board.wait_for("SCANDATA start")
+            record, got = receive_scan(board)
+            if got != size or record["board_name"] != name:
+                print(f"{name}: got {got} of {size} bytes, not saved")
+                continue
+            save_board_scan(record)
+            fetched += 1
+        # Delete only what is safely here and reads back
+        if clear and json.loads(path.read_text()).get("board_name") == name:
+            board.send(f"DELETE {name}")
+            if board.wait_for("DELETE") == f"DELETED {name}":
+                deleted += 1
+    print(f"{len(files)} on the board, {fetched} fetched, {skipped} already here, {deleted} deleted from the board")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--scan", action="store_true", help="ask the board for a scan")
     parser.add_argument("--status", action="store_true", help="show the lidar details and stop")
+    parser.add_argument("--list", action="store_true", help="list the scans saved on the board and stop")
+    parser.add_argument("--fetch", action="store_true", help="save the board's scans in scans/ and stop")
+    parser.add_argument("--clear", action="store_true", help="with --fetch, delete them from the board")
     args = parser.parse_args()
+    sys.stdout.reconfigure(line_buffering=True)  # show each line at once, even when piped
+    if args.clear and not args.fetch:
+        parser.error("--clear only works with --fetch")
 
     board = Board()
     try:
         if args.status:
             print(f"board: {board.wait_for('LIDAR')}")
-            return
-        if args.scan:
-            board.send("SCAN")
-        listen(board)
+        elif args.list:
+            files, end = board_list(board)
+            for name, size in files.items():
+                print(f"{name} {size} bytes")
+            count, used, total = end.split()[2:5]
+            print(f"{count} scans, {int(used) * 100 // max(int(total), 1)}% full")
+        elif args.fetch:
+            fetch(board, args.clear)
+        else:
+            if args.scan:
+                board.send("SCAN")
+            listen(board)
     except KeyboardInterrupt:
         pass
     finally:

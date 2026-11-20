@@ -13,6 +13,14 @@ void Lidar::begin() {
   port.begin(BAUD, SERIAL_8N1, PIN_RX, PIN_TX);
 }
 
+String Lidar::infoLine(const Info &info) {
+  char serial[33], line[80];
+  for (int i = 0; i < 16; i++) sprintf(serial + 2 * i, "%02X", info.serial[i]);
+  snprintf(line, sizeof line, "LIDAR %d %d.%02d %d %s", info.model, info.firmwareMajor, info.firmwareMinor,
+           info.hardware, serial);
+  return line;
+}
+
 void Lidar::command(uint8_t cmd) {
   const uint8_t bytes[2] = {0xA5, cmd};
   port.write(bytes, 2);

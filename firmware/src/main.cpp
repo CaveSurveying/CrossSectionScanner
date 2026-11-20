@@ -1,65 +1,93 @@
-// CrossSectionScanner, stand-alone unit: SCAN takes a lidar scan and shows it.
-// A computer on the USB port can watch and ask for scans for debugging (tools/board_link.py)
+// CrossSectionScanner, stand-alone unit: SCAN takes a lidar scan, shows it and saves it in flash.
+// ‹ and › step through saved scans. A computer on the USB port can watch, ask for scans and
+// fetch saved ones for debugging (tools/board_link.py)
 //
 // Board to computer
 //   READY           after boot and in reply to ?
-//   LIDAR <model> <firmware> <hardware> <serial>   lidar details, in reply to ? and before each scan
+//   LIDAR <model> <firmware> <hardware> <serial>   lidar details, in reply to ?
 //   LIDAR none      no lidar answers
-//   SCANDATA start  a scan follows, then T and P <deg> <mm> <quality> lines, raw as the lidar sent them
+//   SCANDATA start  a scan follows in the saved text format (scan_store.h), each new scan and in reply to GET
 //   SCANDATA end
 //   LIDAR failed    a scan did not complete
+//   SAVED <name> <overwritten>, or SAVE failed <name>
+//   FILE ... and LIST end ...   in reply to LIST, see scan_store.h
+//   GET failed <name>, DELETED <name>, DELETE failed <name>
 //   TOUCH x y rx ry each new touch, screen and raw (for checking calibration)
 //   CAL ...         new touch calibration, or why it failed
 // Computer to board
 //   ?               reply READY and the lidar details
 //   SCAN            scan as if SCAN were pressed
+//   LIST            list the saved scans
+//   GET <name>      send a saved scan
+//   DELETE <name>   delete a saved scan
 #include <Arduino.h>
 #include <cyd_display.h>
 
 #include "lidar.h"
+#include "scan_store.h"
 #include "scan_view.h"
 
 constexpr long BAUD = 460800;
 constexpr int VIEW = 240;  // square scan view at the top of the portrait screen
+constexpr int MSG_Y = VIEW + ScanView::NOTES_H;
 constexpr int BTN_Y = 272, BTN_H = 42;
-constexpr int SCAN_X = 10, SCAN_W = 150;
-constexpr int CAL_X = 170, CAL_W = 60;
+constexpr int PREV_X = 4, NEXT_X = 152, STEP_W = 44;
+constexpr int SCAN_X = 52, SCAN_W = 96;
+constexpr int CAL_X = 200, CAL_W = 36;
 constexpr unsigned long CAL_HOLD_MS = 1000;     // so it is not started by accident
 constexpr unsigned long LIDAR_CHECK_MS = 2000;  // how often to look for a lidar while none is found
 constexpr int SCAN_TURNS = 1;
 
 cyd::Display lcd;
 ScanView scanView;
+ScanStore store;
 Lidar lidar;
 Lidar::Info lidarInfo;
 bool lidarFound = false;
+bool storeOk = false;
 bool scanning = false;
-int scans = 0;
+int shown = -1;  // saved scan on the screen, -1 for none
 
 bool inside(int x, int y, int bx, int bw) { return x >= bx && x < bx + bw && y >= BTN_Y && y < BTN_Y + BTN_H; }
+
+void drawButton(int x, int w, bool active, uint16_t colour, const char *text, int textSize) {
+  lcd.fillRoundRect(x, BTN_Y, w, BTN_H, 8, active ? colour : TFT_DARKGREY);
+  lcd.setTextSize(textSize);
+  lcd.drawString(text, x + w / 2, BTN_Y + BTN_H / 2);
+}
 
 void drawButtons() {
   lcd.setTextColor(TFT_WHITE);
   lcd.setTextDatum(middle_center);
-  lcd.fillRoundRect(SCAN_X, BTN_Y, SCAN_W, BTN_H, 8, lidarFound && !scanning ? TFT_DARKGREEN : TFT_DARKGREY);
-  lcd.setTextSize(2);
-  lcd.drawString(scanning ? "Scanning" : lidarFound ? "SCAN" : "No lidar", SCAN_X + SCAN_W / 2, BTN_Y + BTN_H / 2);
-  lcd.fillRoundRect(CAL_X, BTN_Y, CAL_W, BTN_H, 8, TFT_NAVY);
-  lcd.setTextSize(1);
+  drawButton(PREV_X, STEP_W, shown > 0, TFT_NAVY, "<", 2);
+  drawButton(SCAN_X, SCAN_W, lidarFound && !scanning, TFT_DARKGREEN, scanning ? "Scanning" : lidarFound ? "SCAN" : "No lidar",
+             scanning || !lidarFound ? 1 : 2);
+  drawButton(NEXT_X, STEP_W, shown < store.count() - 1, TFT_NAVY, ">", 2);
+  drawButton(CAL_X, CAL_W, true, TFT_NAVY, "", 1);
   lcd.drawString("Cal", CAL_X + CAL_W / 2, BTN_Y + BTN_H / 2 - 6);
-  lcd.drawString("(hold)", CAL_X + CAL_W / 2, BTN_Y + BTN_H / 2 + 6);
+  lcd.drawString("hold", CAL_X + CAL_W / 2, BTN_Y + BTN_H / 2 + 6);
   lcd.setTextDatum(top_left);
 }
 
 void showMessage(const String &text) {
-  lcd.fillRect(0, VIEW + 2, VIEW, BTN_Y - VIEW - 4, TFT_BLACK);
+  lcd.fillRect(0, MSG_Y, VIEW, BTN_Y - MSG_Y, TFT_BLACK);
   lcd.setTextColor(TFT_YELLOW);
   lcd.setTextSize(1);
-  lcd.setCursor(4, VIEW + 6);
+  lcd.setCursor(4, MSG_Y + 1);
   lcd.print(text);
 }
 
-void showLidarState() { showMessage(lidarFound ? "Lidar found, press SCAN" : "No lidar found"); }
+void showLidarState() {
+  if (!storeOk) showMessage("Flash not working, scans not saved");
+  else showMessage(String(lidarFound ? "Lidar found" : "No lidar found") + ", flash " + store.percentFull() + "% full");
+}
+
+void showSaved(int i) {
+  if (!store.load(i, scanView)) return;
+  shown = i;
+  scanView.draw(lcd, VIEW);
+  drawButtons();
+}
 
 // Look for the lidar, true if that changed whether it is found
 bool checkLidar() {
@@ -68,29 +96,34 @@ bool checkLidar() {
   return lidarFound != was;
 }
 
-void sendLidarInfo() {
-  if (!lidarFound) {
-    Serial.println("LIDAR none");
-    return;
-  }
-  char serial[33];
-  for (int i = 0; i < 16; i++) sprintf(serial + 2 * i, "%02X", lidarInfo.serial[i]);
-  Serial.printf("LIDAR %d %d.%02d %d %s\n", lidarInfo.model, lidarInfo.firmwareMajor, lidarInfo.firmwareMinor,
-                lidarInfo.hardware, serial);
+void sendLidarInfo() { Serial.println(lidarFound ? Lidar::infoLine(lidarInfo) : String("LIDAR none")); }
+
+void sendScanText(const String &text) {
+  Serial.println("SCANDATA start");
+  Serial.print(text);
+  Serial.println("SCANDATA end");
 }
 
-// Raw scan to the computer, for saving and checking there
-void sendScan() {
-  sendLidarInfo();
-  Serial.println("SCANDATA start");
-  for (int t = 0; t < lidar.turnCount(); t++) {
-    Serial.println("T");
-    for (int i = lidar.turnStart(t); i < lidar.turnStart(t + 1); i++) {
-      const Lidar::Point &p = lidar.points()[i];
-      Serial.printf("P %.3f %.2f %d\n", p.angleDeg(), p.distanceMm(), p.quality);
-    }
+// Show and save a scan just taken
+void keepScan() {
+  String name;
+  const String text = store.record(lidar, lidarInfo, name);
+  const int overwritten = storeOk ? store.save(name, text) : -1;
+  sendScanText(text);
+  if (overwritten >= 0) {
+    Serial.printf("SAVED %s %d\n", name.c_str(), overwritten);
+    showSaved(store.count() - 1);
+    if (overwritten) showMessage(String("Saved, flash full so ") + overwritten + " oldest overwritten");
+    else showMessage(String("Saved, flash ") + store.percentFull() + "% full");
+    return;
   }
-  Serial.println("SCANDATA end");
+  Serial.printf("SAVE failed %s\n", name.c_str());
+  scanView.clear(name + " not saved");
+  int from = 0;
+  for (int to; (to = text.indexOf('\n', from)) >= 0; from = to + 1) scanView.addLine(text.substring(from, to));
+  shown = -1;
+  scanView.draw(lcd, VIEW);
+  showMessage("Not saved, flash error");
 }
 
 void startScan() {
@@ -101,16 +134,7 @@ void startScan() {
   scanning = true;
   drawButtons();
   if (lidar.capture(SCAN_TURNS)) {
-    scanView.clear(String("Scan ") + ++scans);
-    for (int t = 0; t < lidar.turnCount(); t++) {
-      scanView.nextTurn();
-      for (int i = lidar.turnStart(t); i < lidar.turnStart(t + 1); i++) {
-        const Lidar::Point &p = lidar.points()[i];
-        if (p.distanceQ2 > 0) scanView.addPoint(p.angleDeg(), p.distanceMm());
-      }
-    }
-    scanView.draw(lcd, VIEW);
-    sendScan();
+    keepScan();
   } else {
     Serial.println("LIDAR failed");
     checkLidar();  // it may have been unplugged
@@ -118,6 +142,34 @@ void startScan() {
   }
   scanning = false;
   drawButtons();
+}
+
+void handleLine(const String &line) {
+  if (line == "?") {
+    Serial.println("READY");
+    sendLidarInfo();
+  } else if (line == "SCAN") {
+    startScan();
+  } else if (line == "LIST") {
+    store.list(Serial);
+  } else if (line.startsWith("GET ")) {
+    const String name = line.substring(4);
+    Serial.println("SCANDATA start");
+    const bool sent = store.send(name, Serial);
+    Serial.println("SCANDATA end");
+    if (!sent) Serial.printf("GET failed %s\n", name.c_str());
+  } else if (line.startsWith("DELETE ")) {
+    const String name = line.substring(7);
+    const bool deleted = store.remove(name);
+    Serial.printf(deleted ? "DELETED %s\n" : "DELETE failed %s\n", name.c_str());
+    if (!deleted) return;
+    if (store.count()) {
+      showSaved(constrain(shown, 0, store.count() - 1));
+    } else {
+      shown = -1;
+      drawButtons();
+    }
+  }
 }
 
 void readSerial() {
@@ -129,12 +181,7 @@ void readSerial() {
       continue;
     }
     line.trim();
-    if (line == "?") {
-      Serial.println("READY");
-      sendLidarInfo();
-    } else if (line == "SCAN") {
-      startScan();
-    }
+    handleLine(line);
     line = "";
   }
 }
@@ -142,8 +189,8 @@ void readSerial() {
 // Whole screen after start-up or calibration
 void drawScreen() {
   lcd.fillScreen(TFT_BLACK);
-  if (scanView.count() > 0) scanView.draw(lcd, VIEW);
-  else showLidarState();
+  if (shown >= 0) showSaved(shown);
+  showLidarState();
   drawButtons();
 }
 
@@ -156,6 +203,8 @@ void readTouch() {
     Serial.printf("TOUCH %d %d %d %d\n", x, y, rx, ry);
     lcd.fillCircle(x, y, 3, TFT_YELLOW);  // shows where the touch landed
     if (inside(x, y, SCAN_X, SCAN_W) && lidarFound) startScan();
+    if (inside(x, y, PREV_X, STEP_W) && shown > 0) showSaved(shown - 1);
+    if (inside(x, y, NEXT_X, STEP_W) && shown < store.count() - 1) showSaved(shown + 1);
     if (inside(x, y, CAL_X, CAL_W)) calPressedAt = millis();
   }
   if (!touched || !inside(x, y, CAL_X, CAL_W)) calPressedAt = 0;
@@ -171,6 +220,8 @@ void setup() {
   Serial.setRxBufferSize(8192);
   Serial.begin(BAUD);
   lcd.start();
+  storeOk = store.begin();
+  shown = store.count() - 1;  // newest
   lidar.begin();
   for (int i = 0; i < 10 && !lidarFound; i++) {  // the lidar may still be starting up
     lidarFound = lidar.readInfo(lidarInfo);

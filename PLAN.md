@@ -65,7 +65,7 @@ The lidar motor and its magnet sit close to the compass, so heading needs calibr
 3. Press the on-screen button. One full revolution (or a few, averaged) is captured with the IMU reading at that moment.
 4. The points are shown on the screen, scaled to fit, with the device's position marked and up shown as up.
 5. The user draws round the scan with a stylus, closing the outline where the lidar could not see (behind boulders, deep water, beyond range).
-6. The user enters or picks the station name and the direction the section looks. Save to SD.
+6. The user enters or picks the station name and the direction the section looks. Saved in the board's flash.
 
 ## Data to record per section
 
@@ -82,7 +82,7 @@ Raw data is always kept, so processing can be redone later off the device.
 - Each lidar point with the IMU heading and tilt becomes a splay (distance, compass, clino) from the station. This is the most portable form, since SexyTopo, Therion, Survex and others all take splays.
 - SexyTopo already takes shots over Bluetooth from DistoX type instruments (Bluetooth Classic SPP) and several BLE instruments. Sending a section as a burst of splays through one of those protocols may be possible, but several hundred splays per section may be too many, so a reduced set may be needed.
 - The drawn outline suits a Therion cross section scrap (th2) or SexyTopo sketch, or a simple SVG/JSON exchange file.
-- File export from SD (CSV of splays, JSON with everything) is the first step and needs no radio work.
+- File export from the board's flash (CSV of splays, JSON with everything) is the first step and needs no radio work.
 
 The data model should be designed so all these outputs come from the same saved record.
 
@@ -101,10 +101,13 @@ The data model should be designed so all these outputs come from the same saved 
    Touch fault found 2026-11-19. Calibration failed its centre check (60 to 86 px out). The touch map test (tests/touch_map, tools/touch_map.py, results in tests/touch_map/results) showed raw x is linear and steady, but raw y is crushed towards the bottom, worst on the right (right column reads 906, 3365, 3419, 3606, 3884 from top to bottom against 300 to 3741 on the left). Same with the protective film removed, so the touch layer of this board is faulty. A replacement board is needed for drawing round scans. Stay with resistive touch (works with gloves, stylus, wet fingers).
    Replacement in use, LCDwiki E32R24P (2.4" IPS ST7789, resistive XPT2046, ESP32-32E, one USB-C, CH340C, battery voltage on IO34). Same display and touch pins as the CYD, build with env e32r24p (-DBOARD_E32R24P). Touch map 2026-11-19, straight line fit at most 4 px out, mean 2 px. Five cross calibration passed (centre 4.1 px), colours right with invert on, SCAN button tested with 9 scans. Free pins IO27, IO35 (input only), IO1/3 (USB serial), 18/19/23 if SD and SPI connector unused, RGB LED on 22/16/17.
    Lidar on the board, written 2026-11-19 (firmware/src/lidar.cpp), wiring in docs/WIRING.md (E32R24P, two plugs, lidar TX to IO19 and RX from IO27 on the SPI connector, 5 V and GND from P2, SD slot left empty so scans will go in internal flash with LittleFS). First tested wired 2026-11-20, working.
-   Stand-alone from 2026-11-20. The computer scan fallback and drawing scans sent from the computer are removed (send_to_screen.py is now tools/board_link.py). SCAN is greyed out as "No lidar" until the lidar answers, and the board looks for it every 2 s so it can be plugged in later. For debugging, board_link.py shows what the board reports and saves each scan it takes (source board), --scan asks for a scan and --status for the lidar details. Opening the port still resets the board.
+   Stand-alone from 2026-11-20. The computer scan fallback and drawing scans sent from the computer are removed (send_to_screen.py is now tools/board_link.py). SCAN is greyed out as "No lidar" until the lidar answers, and the board looks for it every 2 s so it can be plugged in later. For debugging, board_link.py shows what the board reports and saves each scan it takes (source board), --scan asks for a scan and --status for the lidar details. Opening the port reset the board up to 2026-11-19, but did not on 2026-11-20 (scans kept their start-up number and time).
    The screen shows the scan seen from the lidar bottom, which is how the device is held, so it is mirrored left to right from the computer plot (seen from the top). Saved scans stay raw, and the drawn outline (stage 3) will be in the screen's coordinates, which must be recorded with it.
    Then wire the lidar to the CYD, read and decode a revolution on the ESP32, show points on the screen.
-2. Capture button, freeze and display a single scan, save raw data to SD.
+2. Capture button, freeze and display a single scan, save raw data. Written 2026-11-20, not yet tested on the board.
+   Each scan is saved straight away in the board's flash (LittleFS on the default spiffs partition, about 1.4 MB, about 130 one-turn scans, fewer once outlines are saved too), one text file per scan in the same format as sent over USB (firmware/src/scan_store.h). Files are named b<start-up>-<scan>, e.g. b0007-003, with the start-up count kept in flash, because the board has no clock. The time since start-up is recorded so scans from one walk keep their order and spacing. The lidar details are recorded with every scan. When the flash is full the oldest scans are overwritten. ‹ and › on the screen step through the saved scans.
+   board_link.py --list shows them, --fetch copies them to scans/board-<name>.json (skipping ones already there, time null, received set) and --fetch --clear then deletes each from the board once its size matched and it reads back on the computer.
+   Station names are left for stage 4. They will go inside the record, and the file name can stay as it is.
 3. Draw round the scan with the stylus, edit (undo, clear), save the outline.
 4. Station name entry and export (CSV splays, JSON).
 5. Add the IMU, level indicator, record orientation.

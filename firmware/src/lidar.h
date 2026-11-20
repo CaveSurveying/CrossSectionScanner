@@ -25,6 +25,8 @@ class Lidar {
   };
 
   void begin();
+  // LIDAR <model> <firmware> <hardware> <serial>, as sent and saved
+  static String infoLine(const Info &info);
   // Ask the lidar for its details, false if it does not answer
   bool readInfo(Info &info);
   // Start the motor, skip the first turns while it settles, keep the next `turns` turns, stop the motor
