@@ -31,7 +31,8 @@ void ScanView::addPoint(float deg, float mm) {
   points[pointCount++] = {(int16_t)(-mm * sinf(a)), (int16_t)(mm * cosf(a)), (uint8_t)(turns - 1)};
 }
 
-void ScanView::draw(cyd::Display &lcd, int size) const {
+void ScanView::draw(cyd::Display &lcd, int viewSize) {
+  size = viewSize;
   lcd.fillRect(0, 0, size, size + NOTES_H, TFT_BLACK);
 
   // Fit the scan's own extent (not the lidar) into the view, keeping the scale equal both ways
@@ -43,8 +44,8 @@ void ScanView::draw(cyd::Display &lcd, int size) const {
     minY = min(minY, (int)p.y), maxY = max(maxY, (int)p.y);
   }
   const int span = max(max(maxX - minX, maxY - minY), 200);
-  const float scale = size * (1 - 2 * MARGIN) / span;  // px per mm
-  const float midX = (minX + maxX) / 2.0, midY = (minY + maxY) / 2.0;
+  scale = size * (1 - 2 * MARGIN) / span;
+  midX = (minX + maxX) / 2.0, midY = (minY + maxY) / 2.0;
   auto sx = [&](float x) { return (int)(size / 2 + (x - midX) * scale); };
   auto sy = [&](float y) { return (int)(size / 2 - (y - midY) * scale); };
 
@@ -74,4 +75,14 @@ void ScanView::draw(cyd::Display &lcd, int size) const {
   lcd.setCursor(4, size + 13);
   if (turns > 1) lcd.printf("%d turns, ", turns);
   lcd.printf("%d points, grid %.1f m", pointCount, grid / 1000.0);
+}
+
+// Scan points are mm with y up, sketch coordinates metres with y down
+Coord ScanView::toSketch(int px, int py) const {
+  return {(midX + (px - size / 2) / scale) / 1000, -(midY - (py - size / 2) / scale) / 1000};
+}
+
+void ScanView::toScreen(Coord c, int &px, int &py) const {
+  px = lroundf(size / 2 + (c.x * 1000 - midX) * scale);
+  py = lroundf(size / 2 - (-c.y * 1000 - midY) * scale);
 }

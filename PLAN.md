@@ -164,7 +164,7 @@ The screen already shows the section seen from the lidar bottom, which is where 
 
 ### Steps
 
-1. Drawing screen with plain sketch lines, points collected and drawn, Undo and Clear. No saving.
+1. Drawing screen with plain sketch lines, points collected and drawn, Undo and Clear. No saving. Written 2026-11-20 (firmware/src/sketch.cpp, Draw on the scan screen in place of the Cal button, calibration now only by holding the screen at power-on), to be tried on the board.
 2. Finishing a stroke as SexyTopo does (close, simplify, snap). Each copied from the named SexyTopo file.
 3. Save and load the sketch file, show it with the scan, fetch with board_link.py.
 4. to_sexytopo.py and the shared test files, and a check in SexyTopo on the phone.
