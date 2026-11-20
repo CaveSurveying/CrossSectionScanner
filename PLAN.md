@@ -65,26 +65,32 @@ The lidar motor and its magnet sit close to the compass, so heading needs calibr
 3. Press the on-screen button. One full revolution (or a few, averaged) is captured with the IMU reading at that moment.
 4. The points are shown on the screen, scaled to fit, with the device's position marked and up shown as up.
 5. The user draws round the scan with a stylus, closing the outline where the lidar could not see (behind boulders, deep water, beyond range).
-6. The user enters or picks the station name and the direction the section looks. Saved in the board's flash.
+6. The user accepts the scan, giving the station (picked from the list SexyTopo sent, or typed when used alone), vertical or horizontal, and for now whether they faced on or back along the survey. Saved in the board's flash, and sent to SexyTopo when connected.
 
 ## Data to record per section
 
 - raw points (angle, distance, quality) as received
 - time, station name, offset from the station if any
+- vertical or horizontal, facing on or back (until the IMU gives heading)
 - IMU orientation (tilt, roll, heading) and calibration state
 - drawn outline as a polyline in the same coordinates as the points
 - device and firmware version
 
 Raw data is always kept, so processing can be redone later off the device.
 
-## Links to surveying software (keep in mind now, build later)
+## Link with SexyTopo
 
-- Each lidar point with the IMU heading and tilt becomes a splay (distance, compass, clino) from the station. This is the most portable form, since SexyTopo, Therion, Survex and others all take splays.
-- SexyTopo already takes shots over Bluetooth from DistoX type instruments (Bluetooth Classic SPP) and several BLE instruments. Sending a section as a burst of splays through one of those protocols may be possible, but several hundred splays per section may be too many, so a reduced set may be needed.
-- The drawn outline suits a Therion cross section scrap (th2) or SexyTopo sketch, or a simple SVG/JSON exchange file.
-- File export from the board's flash (CSV of splays, JSON with everything) is the first step and needs no radio work.
+Outline agreed 2026-11-20. XScan is the working name for the scanner. It must work on its own, and the SexyTopo link is an addition. The SexyTopo side is an upstream change, worked on in the user's fork.
 
-The data model should be designed so all these outputs come from the same saved record.
+- Two way, over Bluetooth (BLE or Classic SPP, to be chosen, SexyTopo already handles both kinds of instrument). Each message carries a length and a checksum.
+- SexyTopo to XScan. The survey name and its stations on connecting, then each new station as it is created (renames and deletions too). XScan offers the newest station first.
+- Accept on XScan. A scan is sent only once the user accepts it, giving the station, vertical or horizontal, and facing on or back. Used alone, the station is typed. Scans not accepted stay on XScan.
+- XScan to SexyTopo. A section message with the scan name, station, orientation, facing, raw points, sketch, sketch revision and checksum.
+- SexyTopo checks it (format version, checksum, station exists, sketch reads) and replies OK or an error with the reason. XScan shows each scan as new, accepted, sent, acknowledged or error. Anything not acknowledged is sent again on the next connection, and SexyTopo ignores one it already has (same scan name and revision).
+- Storage in SexyTopo. A subfolder beside the survey with one file per station that has a scan, holding its vertical and horizontal sections (raw points, sketch, revision, scan name). The points are not added to the survey as legs. They are loaded only when the cross section is opened and drawn behind it, so hundreds of points don't slow the survey views. Splays made from them for export can come later.
+- With no direction from the scanner, SexyTopo takes a vertical scan as lying in the plane it uses now for that station's cross section (CrossSectioner), turned round if the user faced back. A horizontal scan is a plan slice, but with no heading it can't be put north up, so the SexyTopo user rotates it until the IMU gives heading.
+- Sketches. Drawn on XScan, and can be changed in SexyTopo. The user sends a changed sketch again from XScan, with a new revision number and the revision it was based on. SexyTopo replaces its copy only if it hasn't been edited there since that revision. If it has, SexyTopo keeps its own, replies conflict and asks its user whether to replace. Sketches are not sent back to XScan for now. Two-way sketch updates only if this proves not enough.
+- File export from the board's flash (board_link.py --fetch) stays, for use without SexyTopo and for checking.
 
 ## Software
 
@@ -108,16 +114,59 @@ The data model should be designed so all these outputs come from the same saved 
    Each scan is saved straight away in the board's flash (LittleFS on the default spiffs partition, about 1.4 MB, about 130 one-turn scans, fewer once outlines are saved too), one text file per scan in the same format as sent over USB (firmware/src/scan_store.h). Files are named b<start-up>-<scan>, e.g. b0007-003, with the start-up count kept in flash, because the board has no clock. The time since start-up is recorded so scans from one walk keep their order and spacing. The lidar details are recorded with every scan. When the flash is full the oldest scans are overwritten. ‹ and › on the screen step through the saved scans.
    board_link.py --list shows them, --fetch copies them to scans/board-<name>.json (skipping ones already there, time null, received set) and --fetch --clear then deletes each from the board once its size matched and it reads back on the computer.
    Station names are left for stage 4. They will go inside the record, and the file name can stay as it is.
-3. Draw round the scan with the stylus, edit (undo, clear), save the outline.
-4. Station name entry and export (CSV splays, JSON).
+3. Draw round the scan with the stylus, edit (undo, clear), save the outline. Plan 2026-11-20, see "Stage 3 plan" below.
+4. Accept a scan. Station (typed for now), vertical or horizontal, facing on or back.
 5. Add the IMU, level indicator, record orientation.
-6. Bluetooth link to SexyTopo (protocol to be chosen).
+6. Two-way Bluetooth link with SexyTopo, see Link with SexyTopo, with the SexyTopo side as an upstream change.
 7. Battery and case, cave trials.
 
 ## Open questions
 
 - Is the CYD in PlayDisplay-touch.yaml this same board (assumed yes)?
-- "Horizontal" sections, is this for plan slices at a station, e.g. for a passage running vertically like a shaft?
+- Horizontal sections are plan slices at a station, as SexyTopo already has. Answered 2026-11-20.
 - Should a section be one revolution or several averaged? Five-turn tests 2026-11-19 gave 400 to 456 points a turn with about 12% no return, mostly at the same angles each turn. The motor slows over the first few seconds, but the user says there is no need to wait for it, and 400 points is already far more than needed. A thinned set for export and splays, raw kept. How to thin is to be decided from what we get in the cave.
 - Which IMU, and is heading needed or only tilt?
 - Where is the device held relative to the station, and how is that offset recorded?
+
+## Stage 3 plan, drawing round the scan
+
+Agreed 2026-11-20. The design follows SexyTopo, but the code can't be shared. The ESP32 has no Java runtime, SexyTopo's sketch code is built on Android classes, and no cross-platform language (Flutter, Kotlin Multiplatform, Java to WebAssembly) runs on this board. So the behaviour is copied into C++, and what is kept truly the same is the data, in SexyTopo's own sketch format, so SexyTopo opens and edits what the scanner draws.
+
+Taken from SexyTopo upstream main 26c93a7a (2026-11-18, version 1.15.0), read from an export of ~/StudioProjects/sexytopo, Sexytop/Richsmith/main. Each piece copied names the SexyTopo file and this commit, so upstream changes can be checked.
+
+### What SexyTopo does (as read)
+
+- A cross section (model/sketch/CrossSection.java) is at a station, vertical facing a compass angle or horizontal. Its drawing is a sub-sketch stored in the plan sketch file (<survey>.plan.json) under x-sections, each entry with station-id, location, angle, optional orientation horizontal, and sketch (control/io/basic/SketchJsonTranslater.java).
+- The sub-sketch holds paths, areas, labels and symbols. A path is colour, line-type (left out for a plain sketch line) and points as x, y.
+- Sub-sketch coordinates are metres from the station. For a vertical section, x is to the right looking in the direction the section faces, and y is down (Projection2D CROSS_SECTION after the splays are turned by minus the angle, so y is minus height).
+- Line types (model/sketch/LineType.java). SKETCH (plain, no line type written), WALL, FLOOR_STEP, PIT, CHIMNEY, CEILING_STEP, OVERHANG, SLOPE, ROCK_BORDER, ROCK_EDGE, PRESUMED_WALL, UNDERLYING_WALL. All are wanted on XScan. Plain SKETCH lines come first, as they have no inside to work out.
+- Drawing a line (control/sketch/SketchView.java handleLine, model/sketch/Sketch.java). Touch points are collected while the pen is down. On lifting, a line that comes back near its start is closed, wall lines are turned so the passage is on a fixed side (control/util/LineOrienter.java), ends snap to nearby line ends (Sketch.snapActivePath), and the line is simplified by Douglas-Peucker with tolerance = largest size of the line / 500, at least 1 mm (control/util/Space2DUtils.java).
+- Undo and redo of each finished step. The eraser cuts lines at its edge.
+
+### Our screen and SexyTopo's
+
+The screen already shows the section seen from the lidar bottom, which is where the user stands, looking the way the section faces. So screen x matches SexyTopo's x, and SexyTopo's y is minus screen up, in metres. Until the IMU (stage 5), up is assumed to be the lidar's 0°, and the device is assumed to be at the station (the offset is still an open question).
+
+### On the device
+
+1. A Draw button on the scan screen opens the drawing screen, showing the same scan view.
+2. Tools in the button row are Line, Undo, Clear, Done (Redo later), with a line type picker once the other types come. Undo is enough, no eraser for now. Zoom later if needed.
+3. Each stroke is handled as in SexyTopo. Collect points while touched, then on lifting close if near its start, orient walls (only for the wall types), snap ends, simplify. Snap and close distances are a fixed number of screen pixels converted with the current scale, the same idea as SexyTopo's 10 dp.
+4. Saved beside the scan as b<start-up>-<scan>.sketch.json in SexyTopo's sub-sketch format (paths, plus empty areas, labels and symbols), with our own header for the scan name, format version, the SexyTopo commit followed, and the view it was drawn in. The raw scan file is never changed.
+5. Undo history lives only while drawing. Saving writes the finished set of lines.
+6. Opening a saved scan with a drawing shows the lines over the points. Draw again edits them.
+
+### On the computer
+
+- board_link.py --fetch also fetches the .sketch.json files.
+- tools/to_sexytopo.py puts a drawing into an existing SexyTopo survey's plan.json as a cross section at a named station, with the angle given or worked out the way SexyTopo does (CrossSectioner). This lets SexyTopo open real scanner drawings now, before the Bluetooth link (stage 6).
+- Shared test files. Sketch files saved by SexyTopo that the device's reader must load, and device-written files that SexyTopo must load and show the same. Checked by opening them in SexyTopo, and by a Python check of the format in tools/.
+
+### Steps
+
+1. Drawing screen with plain sketch lines, points collected and drawn, Undo and Clear. No saving.
+2. Finishing a stroke as SexyTopo does (close, simplify, snap). Each copied from the named SexyTopo file.
+3. Save and load the sketch file, show it with the scan, fetch with board_link.py.
+4. to_sexytopo.py and the shared test files, and a check in SexyTopo on the phone.
+5. The other line types with a picker, and wall orientation.
+6. Redo, then zoom if wanted after use.
