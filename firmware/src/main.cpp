@@ -1,25 +1,18 @@
-// CrossSectionScanner, stage 1: SCAN button scans with the lidar on the board,
-// or asks the computer to scan when no lidar answers
+// CrossSectionScanner, stand-alone unit: SCAN takes a lidar scan and shows it.
+// A computer on the USB port can watch and ask for scans for debugging (tools/board_link.py)
 //
 // Board to computer
 //   READY           after boot and in reply to ?
-//   SCAN            SCAN pressed with no lidar on the board, the computer scans
-//   LIDAR <model> <firmware> <hardware> <serial>   lidar details, before each board scan
-//   SCANDATA start  a board scan follows, then T and P <deg> <mm> <quality> lines
+//   LIDAR <model> <firmware> <hardware> <serial>   lidar details, in reply to ? and before each scan
+//   LIDAR none      no lidar answers
+//   SCANDATA start  a scan follows, then T and P <deg> <mm> <quality> lines, raw as the lidar sent them
 //   SCANDATA end
-//   LIDAR failed    a board scan did not complete
+//   LIDAR failed    a scan did not complete
 //   TOUCH x y rx ry each new touch, screen and raw (for checking calibration)
 //   CAL ...         new touch calibration, or why it failed
-//   OK <points>     reply to S
-//   DRAWN <points>  reply to E
-// Computer to board (tools/send_to_screen.py)
-//   ?               reply READY
-//   B <name>        begin a scan
-//   T               start the next turn
-//   P <deg> <mm>    one point
-//   S               sync, reply OK once everything before it is read
-//   E               end, draw it, reply DRAWN
-//   M <text>        show a message (e.g. a failed scan) and free the button
+// Computer to board
+//   ?               reply READY and the lidar details
+//   SCAN            scan as if SCAN were pressed
 #include <Arduino.h>
 #include <cyd_display.h>
 
@@ -31,7 +24,8 @@ constexpr int VIEW = 240;  // square scan view at the top of the portrait screen
 constexpr int BTN_Y = 272, BTN_H = 42;
 constexpr int SCAN_X = 10, SCAN_W = 150;
 constexpr int CAL_X = 170, CAL_W = 60;
-constexpr unsigned long CAL_HOLD_MS = 1000;  // so it is not started by accident
+constexpr unsigned long CAL_HOLD_MS = 1000;     // so it is not started by accident
+constexpr unsigned long LIDAR_CHECK_MS = 2000;  // how often to look for a lidar while none is found
 constexpr int SCAN_TURNS = 1;
 
 cyd::Display lcd;
@@ -40,16 +34,16 @@ Lidar lidar;
 Lidar::Info lidarInfo;
 bool lidarFound = false;
 bool scanning = false;
-int boardScans = 0;
+int scans = 0;
 
 bool inside(int x, int y, int bx, int bw) { return x >= bx && x < bx + bw && y >= BTN_Y && y < BTN_Y + BTN_H; }
 
 void drawButtons() {
   lcd.setTextColor(TFT_WHITE);
   lcd.setTextDatum(middle_center);
-  lcd.fillRoundRect(SCAN_X, BTN_Y, SCAN_W, BTN_H, 8, scanning ? TFT_DARKGREY : TFT_DARKGREEN);
+  lcd.fillRoundRect(SCAN_X, BTN_Y, SCAN_W, BTN_H, 8, lidarFound && !scanning ? TFT_DARKGREEN : TFT_DARKGREY);
   lcd.setTextSize(2);
-  lcd.drawString(scanning ? "Scanning" : "SCAN", SCAN_X + SCAN_W / 2, BTN_Y + BTN_H / 2);
+  lcd.drawString(scanning ? "Scanning" : lidarFound ? "SCAN" : "No lidar", SCAN_X + SCAN_W / 2, BTN_Y + BTN_H / 2);
   lcd.fillRoundRect(CAL_X, BTN_Y, CAL_W, BTN_H, 8, TFT_NAVY);
   lcd.setTextSize(1);
   lcd.drawString("Cal", CAL_X + CAL_W / 2, BTN_Y + BTN_H / 2 - 6);
@@ -65,50 +59,29 @@ void showMessage(const String &text) {
   lcd.print(text);
 }
 
-void handleLine(const String &line) {
-  if (line == "?") {
-    Serial.println("READY");
-  } else if (line.startsWith("B")) {
-    scanView.clear(line.substring(2));
-  } else if (line == "S") {
-    Serial.printf("OK %d\n", scanView.count());
-  } else if (line == "T") {
-    scanView.nextTurn();
-  } else if (line.startsWith("P")) {
-    float deg, mm;
-    if (sscanf(line.c_str() + 2, "%f %f", &deg, &mm) == 2) scanView.addPoint(deg, mm);
-  } else if (line == "E") {
-    scanView.draw(lcd, VIEW);
-    scanning = false;
-    drawButtons();
-    Serial.printf("DRAWN %d\n", scanView.count());
-  } else if (line.startsWith("M")) {
-    showMessage(line.substring(2));
-    scanning = false;
-    drawButtons();
-  }
+void showLidarState() { showMessage(lidarFound ? "Lidar found, press SCAN" : "No lidar found"); }
+
+// Look for the lidar, true if that changed whether it is found
+bool checkLidar() {
+  const bool was = lidarFound;
+  lidarFound = lidar.readInfo(lidarInfo);
+  return lidarFound != was;
 }
 
-void readSerial() {
-  static String line;
-  while (Serial.available()) {
-    const char c = Serial.read();
-    if (c == '\n') {
-      line.trim();
-      handleLine(line);
-      line = "";
-    } else {
-      line += c;
-    }
+void sendLidarInfo() {
+  if (!lidarFound) {
+    Serial.println("LIDAR none");
+    return;
   }
-}
-
-// Raw scan to the computer, which saves it like its own scans
-void sendScan() {
   char serial[33];
   for (int i = 0; i < 16; i++) sprintf(serial + 2 * i, "%02X", lidarInfo.serial[i]);
   Serial.printf("LIDAR %d %d.%02d %d %s\n", lidarInfo.model, lidarInfo.firmwareMajor, lidarInfo.firmwareMinor,
                 lidarInfo.hardware, serial);
+}
+
+// Raw scan to the computer, for saving and checking there
+void sendScan() {
+  sendLidarInfo();
   Serial.println("SCANDATA start");
   for (int t = 0; t < lidar.turnCount(); t++) {
     Serial.println("T");
@@ -120,34 +93,49 @@ void sendScan() {
   Serial.println("SCANDATA end");
 }
 
-void scanOnBoard() {
-  if (!lidar.capture(SCAN_TURNS)) {
-    Serial.println("LIDAR failed");
-    showMessage("Lidar scan failed");
+void startScan() {
+  if (!lidarFound || scanning) {
+    sendLidarInfo();
     return;
   }
-  scanView.clear(String("Board scan ") + ++boardScans);
-  for (int t = 0; t < lidar.turnCount(); t++) {
-    scanView.nextTurn();
-    for (int i = lidar.turnStart(t); i < lidar.turnStart(t + 1); i++) {
-      const Lidar::Point &p = lidar.points()[i];
-      if (p.distanceQ2 > 0) scanView.addPoint(p.angleDeg(), p.distanceMm());
-    }
-  }
-  scanView.draw(lcd, VIEW);
-  sendScan();
-}
-
-void startScan() {
   scanning = true;
   drawButtons();
-  if (!lidarFound) lidarFound = lidar.readInfo(lidarInfo);  // in case it was plugged in after start-up
-  if (lidarFound) {
-    scanOnBoard();
-    scanning = false;
-    drawButtons();
+  if (lidar.capture(SCAN_TURNS)) {
+    scanView.clear(String("Scan ") + ++scans);
+    for (int t = 0; t < lidar.turnCount(); t++) {
+      scanView.nextTurn();
+      for (int i = lidar.turnStart(t); i < lidar.turnStart(t + 1); i++) {
+        const Lidar::Point &p = lidar.points()[i];
+        if (p.distanceQ2 > 0) scanView.addPoint(p.angleDeg(), p.distanceMm());
+      }
+    }
+    scanView.draw(lcd, VIEW);
+    sendScan();
   } else {
-    Serial.println("SCAN");  // the computer scans and sends it back
+    Serial.println("LIDAR failed");
+    checkLidar();  // it may have been unplugged
+    showMessage(lidarFound ? "Lidar scan failed" : "Lidar scan failed, no lidar found");
+  }
+  scanning = false;
+  drawButtons();
+}
+
+void readSerial() {
+  static String line;
+  while (Serial.available()) {
+    const char c = Serial.read();
+    if (c != '\n') {
+      line += c;
+      continue;
+    }
+    line.trim();
+    if (line == "?") {
+      Serial.println("READY");
+      sendLidarInfo();
+    } else if (line == "SCAN") {
+      startScan();
+    }
+    line = "";
   }
 }
 
@@ -155,7 +143,7 @@ void startScan() {
 void drawScreen() {
   lcd.fillScreen(TFT_BLACK);
   if (scanView.count() > 0) scanView.draw(lcd, VIEW);
-  else showMessage(lidarFound ? "Lidar found, press SCAN" : "No lidar, SCAN uses send_to_screen.py --listen");
+  else showLidarState();
   drawButtons();
 }
 
@@ -167,7 +155,7 @@ void readTouch() {
   if (touched && !wasTouched) {
     Serial.printf("TOUCH %d %d %d %d\n", x, y, rx, ry);
     lcd.fillCircle(x, y, 3, TFT_YELLOW);  // shows where the touch landed
-    if (inside(x, y, SCAN_X, SCAN_W) && !scanning) startScan();
+    if (inside(x, y, SCAN_X, SCAN_W) && lidarFound) startScan();
     if (inside(x, y, CAL_X, CAL_W)) calPressedAt = millis();
   }
   if (!touched || !inside(x, y, CAL_X, CAL_W)) calPressedAt = 0;
@@ -190,9 +178,18 @@ void setup() {
   }
   drawScreen();
   Serial.println("READY");
+  sendLidarInfo();
 }
 
 void loop() {
+  static unsigned long lastCheck = 0;
+  if (!lidarFound && millis() - lastCheck >= LIDAR_CHECK_MS) {  // it may be plugged in later
+    lastCheck = millis();
+    if (checkLidar()) {
+      showLidarState();
+      drawButtons();
+    }
+  }
   readSerial();
   readTouch();
   delay(10);

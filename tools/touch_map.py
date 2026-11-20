@@ -12,14 +12,14 @@ from pathlib import Path
 import numpy as np
 import serial
 
-from send_to_screen import SCREEN_PORT
+from board_link import BOARD_PORT
 
 RESULTS = Path(__file__).resolve().parent.parent / "tests" / "touch_map" / "results"
 
 
 def record():
     port = serial.Serial()
-    port.port, port.baudrate, port.timeout = SCREEN_PORT, 460800, 1
+    port.port, port.baudrate, port.timeout = BOARD_PORT, 460800, 1
     port.dtr = port.rts = False
     port.open()  # restarts the board, which starts the test
     rows = []

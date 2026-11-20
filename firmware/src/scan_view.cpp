@@ -21,7 +21,8 @@ void ScanView::clear(const String &newName) {
 void ScanView::addPoint(float deg, float mm) {
   if (pointCount >= MAX_POINTS || turns == 0) return;
   const float a = radians(deg);
-  points[pointCount++] = {(int16_t)(mm * sinf(a)), (int16_t)(mm * cosf(a)), (uint8_t)(turns - 1)};
+  // Angles run clockwise seen from the lidar top, so seen from below x is mirrored
+  points[pointCount++] = {(int16_t)(-mm * sinf(a)), (int16_t)(mm * cosf(a)), (uint8_t)(turns - 1)};
 }
 
 void ScanView::draw(cyd::Display &lcd, int size) const {

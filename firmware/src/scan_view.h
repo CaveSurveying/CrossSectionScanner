@@ -15,7 +15,7 @@ class ScanView {
 
  private:
   struct Point {
-    int16_t x, y;  // mm from the lidar, 0° up, clockwise
+    int16_t x, y;  // mm from the lidar as seen on the screen (from the lidar bottom), 0° up
     uint8_t turn;
   };
   Point points[MAX_POINTS];
