@@ -1,5 +1,6 @@
 // CrossSectionScanner, stand-alone unit: SCAN takes a lidar scan, shows it and saves it in flash.
-// ‹ and › step through saved scans, Draw opens the drawing screen for the scan shown.
+// ‹ and › step through saved scans, Draw opens the drawing screen for the scan shown, where
+// Save keeps the drawing and Cancel puts it back as it was.
 // A computer on the USB port can watch, ask for scans and fetch saved ones for debugging
 // (tools/board_link.py). Touch calibration runs if the screen is held at power-on.
 //
@@ -13,6 +14,9 @@
 //   SAVED <name> <overwritten>, or SAVE failed <name>
 //   FILE ... and LIST end ...   in reply to LIST, see scan_store.h
 //   GET failed <name>, DELETED <name>, DELETE failed <name>
+//   SKETCHDATA start  a drawing follows (sketch_file.h), each saved drawing and in reply to GETSKETCH
+//   SKETCHDATA end
+//   SKETCH SAVED <name> <revision> <overwritten>, or SKETCH failed <name>
 //   BUSY drawing    SCAN or DELETE refused while the drawing screen is open
 //   TOUCH x y rx ry each new touch, screen and raw (for checking calibration)
 //   CAL ...         new touch calibration, or why it failed
@@ -21,6 +25,7 @@
 //   SCAN            scan as if SCAN were pressed
 //   LIST            list the saved scans
 //   GET <name>      send a saved scan
+//   GETSKETCH <name>  send a saved scan's drawing
 //   DELETE <name>   delete a saved scan
 #include <Arduino.h>
 #include <cyd_display.h>
@@ -29,6 +34,7 @@
 #include "scan_store.h"
 #include "scan_view.h"
 #include "sketch.h"
+#include "sketch_file.h"
 
 constexpr long BAUD = 460800;
 constexpr int VIEW = 240;  // square scan view at the top of the portrait screen
@@ -39,7 +45,8 @@ constexpr int PREV_X = 4, NEXT_X = 152, STEP_W = 44;
 constexpr int SCAN_X = 52, SCAN_W = 96;
 constexpr int DRAW_X = 200, DRAW_W = 36;
 // Drawing screen buttons
-constexpr int UNDO_X = 4, CLEAR_X = 82, DONE_X = 160, EDIT_W = 76;
+constexpr int UNDO_X = 4, CLEAR_X = 62, CANCEL_X = 120, EDIT_W = 54;
+constexpr int SAVE_X = 178, SAVE_W = 58;
 constexpr unsigned long LIDAR_CHECK_MS = 2000;  // how often to look for a lidar while none is found
 constexpr int SCAN_TURNS = 1;
 constexpr uint16_t LINE_COLOUR = TFT_WHITE;
@@ -56,13 +63,15 @@ bool storeOk = false;
 bool scanning = false;
 bool drawing = false;  // drawing screen open
 int shown = -1;        // saved scan on the screen, -1 for none
-String sketchFor;      // saved scan the sketch belongs to, not saved yet (stage 3 step 3)
+int sketchRevision = 0;  // of the drawing shown, 0 if it has never been saved
 
 bool inside(int x, int y, int bx, int bw) { return x >= bx && x < bx + bw && y >= BTN_Y && y < BTN_Y + BTN_H; }
 
-void drawButton(int x, int w, bool active, uint16_t colour, const char *text, int textSize) {
+// Large text if it fits the button, small if not
+void drawButton(int x, int w, bool active, uint16_t colour, const char *text) {
   lcd.fillRoundRect(x, BTN_Y, w, BTN_H, 8, active ? colour : TFT_DARKGREY);
-  lcd.setTextSize(textSize);
+  lcd.setTextSize(2);
+  if (lcd.textWidth(text) > w - 6) lcd.setTextSize(1);
   lcd.drawString(text, x + w / 2, BTN_Y + BTN_H / 2);
 }
 
@@ -71,15 +80,16 @@ void drawButtons() {
   lcd.setTextColor(TFT_WHITE);
   lcd.setTextDatum(middle_center);
   if (drawing) {
-    drawButton(UNDO_X, EDIT_W, true, TFT_NAVY, "Undo", 2);
-    drawButton(CLEAR_X, EDIT_W, !sketch.paths().empty(), TFT_MAROON, "Clear", 2);
-    drawButton(DONE_X, EDIT_W, true, TFT_DARKGREEN, "Done", 2);
+    drawButton(UNDO_X, EDIT_W, sketch.changed(), TFT_NAVY, "Undo");
+    drawButton(CLEAR_X, EDIT_W, !sketch.paths().empty(), TFT_MAROON, "Clear");
+    drawButton(CANCEL_X, EDIT_W, true, TFT_NAVY, "Cancel");
+    drawButton(SAVE_X, SAVE_W, true, TFT_DARKGREEN, "Save");
   } else {
-    drawButton(PREV_X, STEP_W, shown > 0, TFT_NAVY, "<", 2);
+    drawButton(PREV_X, STEP_W, shown > 0, TFT_NAVY, "<");
     drawButton(SCAN_X, SCAN_W, lidarFound && !scanning, TFT_DARKGREEN,
-               scanning ? "Scanning" : lidarFound ? "SCAN" : "No lidar", scanning || !lidarFound ? 1 : 2);
-    drawButton(NEXT_X, STEP_W, shown < store.count() - 1, TFT_NAVY, ">", 2);
-    drawButton(DRAW_X, DRAW_W, scanView.count() > 0, TFT_PURPLE, "Draw", 1);
+               scanning ? "Scanning" : lidarFound ? "SCAN" : "No lidar");
+    drawButton(NEXT_X, STEP_W, shown < store.count() - 1, TFT_NAVY, ">");
+    drawButton(DRAW_X, DRAW_W, scanView.count() > 0, TFT_PURPLE, "Draw");
   }
   lcd.setTextDatum(top_left);
 }
@@ -115,17 +125,12 @@ void drawView() {
   lcd.clearClipRect();
 }
 
-// The sketch is kept only while the same scan is shown, until saving comes (stage 3 step 3)
-void sketchBelongsTo(const String &name) {
-  if (name == sketchFor) return;
-  sketch.forget();
-  sketchFor = name;
-}
-
 void showSaved(int i) {
   if (!store.load(i, scanView)) return;
   shown = i;
-  sketchBelongsTo(store.name(i));
+  sketch.forget();
+  sketchRevision = 0;
+  store.loadSketch(store.name(i), sketch, sketchRevision);
   drawView();
   drawButtons();
 }
@@ -137,11 +142,53 @@ void openDrawing() {
   drawButtons();
 }
 
-void closeDrawing() {
+void sendSketch(const String &name) {
+  Serial.println("SKETCHDATA start");
+  store.sendSketch(name, Serial);
+  Serial.println("SKETCHDATA end");
+}
+
+// Back to the scan screen with the drawing as it was when opened
+void cancelDrawing() {
+  const bool changed = sketch.changed();
+  sketch.revert();
   drawing = false;
   drawView();
-  showLidarState();
   drawButtons();
+  if (changed) showMessage("Drawing not changed");
+  else showLidarState();
+}
+
+// Save the drawing if it changed, undo goes back only to here
+void saveDrawing() {
+  drawing = false;
+  drawView();
+  drawButtons();
+  if (!sketch.changed()) {
+    showLidarState();
+    return;
+  }
+  sketch.forgetHistory();
+  if (shown < 0) {
+    showMessage("Drawing not saved, its scan was not saved");
+    return;
+  }
+  const String &name = store.name(shown);
+  const int overwritten = storeOk ? store.saveSketch(name, sketch, sketchRevision + 1) : -1;
+  if (overwritten < 0) {
+    Serial.printf("SKETCH failed %s\n", name.c_str());
+    showMessage("Drawing not saved, flash error");
+    return;
+  }
+  sketchRevision++;
+  Serial.printf("SKETCH SAVED %s %d %d\n", name.c_str(), sketchRevision, overwritten);
+  sendSketch(name);
+  if (overwritten) {
+    showSaved(shown - overwritten);  // the older scans before it were overwritten
+    showMessage(String("Drawing saved, flash full so ") + overwritten + " oldest overwritten");
+  } else {
+    showMessage(String("Drawing saved, flash ") + store.percentFull() + "% full");
+  }
 }
 
 // Look for the lidar, true if that changed whether it is found
@@ -177,7 +224,7 @@ void keepScan() {
   int from = 0;
   for (int to; (to = text.indexOf('\n', from)) >= 0; from = to + 1) scanView.addLine(text.substring(from, to));
   shown = -1;
-  sketchBelongsTo(name);
+  sketch.forget();
   drawView();
   showMessage("Not saved, flash error");
 }
@@ -216,6 +263,8 @@ void handleLine(const String &line) {
     const bool sent = store.send(name, Serial);
     Serial.println("SCANDATA end");
     if (!sent) Serial.printf("GET failed %s\n", name.c_str());
+  } else if (line.startsWith("GETSKETCH ")) {
+    sendSketch(line.substring(10));
   } else if (line.startsWith("DELETE ")) {
     const String name = line.substring(7);
     const bool deleted = store.remove(name);
@@ -253,7 +302,7 @@ void pressScanScreen(int x, int y) {
 }
 
 void pressDrawingButtons(int x, int y) {
-  if (inside(x, y, UNDO_X, EDIT_W) && sketch.undo()) {
+  if (inside(x, y, UNDO_X, EDIT_W) && sketch.undo()) {  // nothing before the drawing was opened
     drawView();
     drawButtons();
   }
@@ -262,7 +311,8 @@ void pressDrawingButtons(int x, int y) {
     drawView();
     drawButtons();
   }
-  if (inside(x, y, DONE_X, EDIT_W)) closeDrawing();
+  if (inside(x, y, CANCEL_X, EDIT_W)) cancelDrawing();
+  if (inside(x, y, SAVE_X, SAVE_W)) saveDrawing();
 }
 
 // Pen on the drawing screen, a line follows the pen while it stays in the view

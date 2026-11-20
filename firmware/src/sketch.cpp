@@ -203,6 +203,11 @@ void Sketch::clear() {
   apply(step, {});
 }
 
+void Sketch::setPaths(const std::vector<Path> &paths) {
+  forget();
+  finished = paths;
+}
+
 void Sketch::forget() {
   finished.clear();
   history.clear();

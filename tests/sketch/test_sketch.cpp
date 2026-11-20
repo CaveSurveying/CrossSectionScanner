@@ -88,6 +88,18 @@ int main() {
     stroke(s, {1.2, 0}, {2, 0});
     check(s.paths().size() == 2, "ends further apart than the snap distance stay apart");
   }
+  {
+    Sketch s;
+    stroke(s, {0, 0}, {1, 0});
+    s.forgetHistory();  // as saved, then the drawing screen opened again
+    stroke(s, {1.01, 0}, {1, 1});
+    stroke(s, {0, 1}, {-1, 1});
+    s.clear();
+    stroke(s, {5, 5}, {6, 6});
+    s.revert();
+    check(s.paths().size() == 1 && s.paths()[0].points.size() == 2 && s.paths()[0].end() == Coord{1, 0} && !s.changed(),
+          "revert (Cancel) puts the lines back as they were when opened");
+  }
   std::printf("%d failed\n", failures);
   return failures ? EXIT_FAILURE : EXIT_SUCCESS;
 }

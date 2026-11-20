@@ -3,6 +3,8 @@
 #include <LittleFS.h>
 #include <Preferences.h>
 
+#include "sketch_file.h"
+
 #include <algorithm>
 
 namespace {
@@ -10,6 +12,20 @@ constexpr int FORMAT = 1;
 constexpr size_t SPARE = 8192;  // file system blocks and metadata beyond the text itself
 
 String pathOf(const String &name) { return "/" + name + ".txt"; }
+String sketchPathOf(const String &name) { return "/" + name + ".sketch.json"; }
+
+size_t sizeOf(const String &path) {
+  File f = LittleFS.open(path, "r");
+  return f ? f.size() : 0;
+}
+
+bool sendFile(const String &path, Print &out) {
+  File f = LittleFS.open(path, "r");
+  if (!f) return false;
+  uint8_t buf[512];
+  while (const size_t n = f.read(buf, sizeof buf)) out.write(buf, n);
+  return true;
+}
 }  // namespace
 
 bool ScanStore::begin() {
@@ -54,12 +70,19 @@ String ScanStore::record(const Lidar &lidar, const Lidar::Info &info, String &na
   return text;
 }
 
-int ScanStore::save(const String &name, const String &text) {
+int ScanStore::makeRoom(size_t bytes, const String &keep) {
   int overwritten = 0;
-  while (LittleFS.totalBytes() - LittleFS.usedBytes() < text.length() + SPARE && !names.empty()) {
-    if (!remove(names.front())) return -1;
+  while (LittleFS.totalBytes() - LittleFS.usedBytes() < bytes + SPARE) {
+    auto oldest = std::find_if(names.begin(), names.end(), [&](const String &n) { return n != keep; });
+    if (oldest == names.end() || !remove(*oldest)) return -1;
     overwritten++;
   }
+  return overwritten;
+}
+
+int ScanStore::save(const String &name, const String &text) {
+  const int overwritten = makeRoom(text.length(), name);
+  if (overwritten < 0) return -1;
   File f = LittleFS.open(pathOf(name), "w");
   if (!f) return -1;
   const size_t written = f.print(text);
@@ -81,25 +104,36 @@ bool ScanStore::load(int i, ScanView &view) {
   return true;
 }
 
-bool ScanStore::send(const String &name, Print &out) {
-  File f = LittleFS.open(pathOf(name), "r");
-  if (!f) return false;
-  uint8_t buf[512];
-  while (const size_t n = f.read(buf, sizeof buf)) out.write(buf, n);
-  return true;
+bool ScanStore::send(const String &name, Print &out) { return sendFile(pathOf(name), out); }
+
+int ScanStore::saveSketch(const String &name, const Sketch &sketch, int revision) {
+  const int overwritten = makeRoom(sketch_file::maxSize(sketch), name);
+  if (overwritten < 0) return -1;
+  File f = LittleFS.open(sketchPathOf(name), "w");
+  if (!f) return -1;
+  sketch_file::write(f, sketch, name, revision);
+  const bool ok = !f.getWriteError();
+  f.close();
+  if (!ok) LittleFS.remove(sketchPathOf(name));  // not left half written
+  return ok ? overwritten : -1;
 }
+
+bool ScanStore::loadSketch(const String &name, Sketch &sketch, int &revision) {
+  File f = LittleFS.open(sketchPathOf(name), "r");
+  return f && sketch_file::read(f, sketch, revision);
+}
+
+bool ScanStore::sendSketch(const String &name, Print &out) { return sendFile(sketchPathOf(name), out); }
 
 bool ScanStore::remove(const String &name) {
   if (!LittleFS.remove(pathOf(name))) return false;
+  if (LittleFS.exists(sketchPathOf(name))) LittleFS.remove(sketchPathOf(name));
   names.erase(std::remove(names.begin(), names.end(), name), names.end());
   return true;
 }
 
 void ScanStore::list(Print &out) {
-  for (const String &n : names) {
-    File f = LittleFS.open(pathOf(n), "r");
-    out.printf("FILE %s %u\n", n.c_str(), f ? f.size() : 0);
-  }
+  for (const String &n : names) out.printf("FILE %s %u %u\n", n.c_str(), sizeOf(pathOf(n)), sizeOf(sketchPathOf(n)));
   out.printf("LIST end %d %u %u\n", count(), LittleFS.usedBytes(), LittleFS.totalBytes());
 }
 

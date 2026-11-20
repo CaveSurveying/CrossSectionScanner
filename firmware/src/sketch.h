@@ -30,6 +30,10 @@ class Sketch {
   bool undo();
   void clear();
   void forget();  // drop everything, history too, for a different scan
+  void setPaths(const std::vector<Path> &paths);  // lines read back, with no history
+  bool changed() const { return !history.empty(); }
+  void forgetHistory() { history.clear(); }  // undo goes back only to here
+  void revert() { while (undo()) {} }        // back to how it was when the history began
 
   const std::vector<Path> &paths() const { return finished; }
   const Path *activePath() const { return active ? &current : nullptr; }

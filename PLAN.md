@@ -150,7 +150,7 @@ The screen already shows the section seen from the lidar bottom, which is where 
 ### On the device
 
 1. A Draw button on the scan screen opens the drawing screen, showing the same scan view.
-2. Tools in the button row are Line, Undo, Clear, Done (Redo later), with a line type picker once the other types come. Undo is enough, no eraser for now. Zoom later if needed.
+2. Tools in the button row are Undo, Clear, Cancel (back to how it was when opened, user 2026-11-20) and Save (Redo later), with a line type picker once the other types come. Undo is enough, no eraser for now. Zoom later if needed.
 3. Each stroke is handled as in SexyTopo. Collect points while touched, then on lifting close if near its start, orient walls (only for the wall types), snap ends, simplify. Snap and close distances are a fixed number of screen pixels converted with the current scale, the same idea as SexyTopo's 10 dp.
 4. Saved beside the scan as b<start-up>-<scan>.sketch.json in SexyTopo's sub-sketch format (paths, plus empty areas, labels and symbols), with our own header for the scan name, format version, the SexyTopo commit followed, and the view it was drawn in. The raw scan file is never changed.
 5. Undo history lives only while drawing. Saving writes the finished set of lines.
@@ -166,7 +166,7 @@ The screen already shows the section seen from the lidar bottom, which is where 
 
 1. Drawing screen with plain sketch lines, points collected and drawn, Undo and Clear. No saving. Written 2026-11-20 (firmware/src/sketch.cpp, Draw on the scan screen in place of the Cal button, calibration now only by holding the screen at power-on), to be tried on the board.
 2. Finishing a stroke as SexyTopo does (close, simplify, snap). Each copied from the named SexyTopo file. Written 2026-11-20 for plain lines (snap to line ends and close into a loop, joined lines become one, a tap leaves a dot, Douglas-Peucker simplify), with tests/sketch run on the computer (13 checks pass). Clip to Walls and closing outlines come with the other line types. Snap to Lines and its distance are options in SexyTopo, fixed on and 10 px here for now (user 2026-11-20).
-3. Save and load the sketch file, show it with the scan, fetch with board_link.py.
+3. Save and load the sketch file, show it with the scan, fetch with board_link.py. Written 2026-11-20 (firmware/src/sketch_file.cpp, ArduinoJson 7.4.3 for reading). Saved on Save if changed, revision counted up on each save, removed with its scan, never overwrites its own scan when the flash is full. board_link.py --list shows drawing sizes, --fetch saves scans/board-<name>.sketch.json byte for byte. To be tried on the board.
 4. to_sexytopo.py and the shared test files, and a check in SexyTopo on the phone.
 5. The other line types with a picker, and wall orientation.
 6. Redo, then zoom if wanted after use.

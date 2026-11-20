@@ -9,7 +9,7 @@
   board_link.py --fetch --clear   and then delete them from the board, once each is checked here
 
 Board scans are saved as scans/board-<name>.json, e.g. board-b0007-003 is scan 3 after the
-board's 7th start-up. The board has no clock, so their time is null and received is when they
+board's 7th start-up, and their drawings as scans/board-<name>.sketch.json, as the board wrote them. The board has no clock, so their time is null and received is when they
 reached the computer.
 """
 import argparse
@@ -106,6 +106,35 @@ def save_board_scan(record):
     print(f"{path.name}: {len(record['revolutions'])} turns, {points} points")
 
 
+def receive_sketch(board):
+    """Read a drawing (after SKETCHDATA start) and return its text, as the board saved it."""
+    lines = []
+    while (line := board.readline()) != "SKETCHDATA end":
+        if not line:
+            raise RuntimeError("drawing stopped part way")
+        lines.append(line)
+    return "".join(f"{line}\n" for line in lines)
+
+
+def sketch_path(board_name):
+    return SCANS_DIR / f"{file_name(board_name)}.sketch.json"
+
+
+def save_board_sketch(text):
+    """Save a drawing unless the same one is already here, and return its scan name."""
+    sketch = json.loads(text)
+    if not sketch.get("format", "").startswith("XScan sketch "):
+        raise RuntimeError(f"not a drawing: {sketch.get('format')}")
+    path = sketch_path(sketch["scan"])
+    if path.exists() and path.read_text() == text:
+        return sketch["scan"]
+    state = "updated" if path.exists() else "new"
+    path.write_text(text)
+    points = sum(len(p["points"]) for p in sketch["sketch"]["paths"])
+    print(f"{path.name}: {state}, revision {sketch['revision']}, {len(sketch['sketch']['paths'])} lines, {points} points")
+    return sketch["scan"]
+
+
 def listen(board):
     print("Listening, Ctrl-C to stop")
     while True:
@@ -115,27 +144,32 @@ def listen(board):
                 save_board_scan(receive_scan(board)[0])
             except Exception as e:
                 print(f"scan not saved: {e}")
+        elif line == "SKETCHDATA start":
+            try:
+                save_board_sketch(receive_sketch(board))
+            except Exception as e:
+                print(f"drawing not saved: {e}")
         elif line:
             print(f"board: {line}")
 
 
 def board_list(board):
-    """Saved scans on the board as {name: bytes}, and the LIST end line."""
+    """Saved scans on the board as {name: (scan bytes, drawing bytes)}, and the LIST end line."""
     board.send("LIST")
     files = {}
     while True:
         line = board.wait_for("")
         if line.startswith("FILE "):
-            _, name, size = line.split()
-            files[name] = int(size)
+            _, name, *sizes = line.split()
+            files[name] = (int(sizes[0]), int(sizes[1]) if len(sizes) > 1 else 0)
         elif line.startswith("LIST end"):
             return files, line
 
 
 def fetch(board, clear):
     files, _ = board_list(board)
-    fetched = skipped = deleted = 0
-    for name, size in files.items():
+    fetched = skipped = deleted = drawings = 0
+    for name, (size, sketch_size) in files.items():
         path = SCANS_DIR / f"{file_name(name)}.json"
         if path.exists():
             skipped += 1
@@ -148,12 +182,23 @@ def fetch(board, clear):
                 continue
             save_board_scan(record)
             fetched += 1
+        if sketch_size:
+            board.send(f"GETSKETCH {name}")
+            board.wait_for("SKETCHDATA start")
+            text = receive_sketch(board)
+            if len(text) != sketch_size:
+                print(f"{name} drawing: got {len(text)} of {sketch_size} bytes, not saved")
+                continue
+            save_board_sketch(text)
+            drawings += 1
         # Delete only what is safely here and reads back
-        if clear and json.loads(path.read_text()).get("board_name") == name:
+        if (clear and json.loads(path.read_text()).get("board_name") == name
+                and (not sketch_size or json.loads(sketch_path(name).read_text()).get("scan") == name)):
             board.send(f"DELETE {name}")
             if board.wait_for("DELETE") == f"DELETED {name}":
                 deleted += 1
-    print(f"{len(files)} on the board, {fetched} fetched, {skipped} already here, {deleted} deleted from the board")
+    print(f"{len(files)} on the board, {fetched} fetched, {skipped} already here, {drawings} drawings checked, "
+          f"{deleted} deleted from the board")
 
 
 def main():
@@ -174,8 +219,8 @@ def main():
             print(f"board: {board.wait_for('LIDAR')}")
         elif args.list:
             files, end = board_list(board)
-            for name, size in files.items():
-                print(f"{name} {size} bytes")
+            for name, (size, sketch_size) in files.items():
+                print(f"{name} {size} bytes" + (f", drawing {sketch_size} bytes" if sketch_size else ""))
             count, used, total = end.split()[2:5]
             print(f"{count} scans, {int(used) * 100 // max(int(total), 1)}% full")
         elif args.fetch:
