@@ -1,6 +1,7 @@
 // CrossSectionScanner, stand-alone unit: SCAN takes a lidar scan, shows it and saves it in flash.
 // ‹ and › step through saved scans, Draw opens the drawing screen for the scan shown, where
-// Save keeps the drawing and Cancel puts it back as it was.
+// Type picks the kind of line (as SexyTopo's), Save keeps the drawing and Cancel puts it back as
+// it was.
 // A computer on the USB port can watch, ask for scans and fetch saved ones for debugging
 // (tools/board_link.py). Touch calibration runs if the screen is held at power-on.
 //
@@ -31,6 +32,7 @@
 #include <cyd_display.h>
 
 #include "lidar.h"
+#include "line_style.h"
 #include "scan_store.h"
 #include "scan_view.h"
 #include "sketch.h"
@@ -45,12 +47,15 @@ constexpr int PREV_X = 4, NEXT_X = 152, STEP_W = 44;
 constexpr int SCAN_X = 52, SCAN_W = 96;
 constexpr int DRAW_X = 200, DRAW_W = 36;
 // Drawing screen buttons
-constexpr int UNDO_X = 4, CLEAR_X = 62, CANCEL_X = 120, EDIT_W = 54;
-constexpr int SAVE_X = 178, SAVE_W = 58;
+constexpr int UNDO_X = 2, CLEAR_X = 45, TYPE_X = 88, CANCEL_X = 157, SAVE_X = 200;
+constexpr int EDIT_W = 40, TYPE_W = 66;
+// Line type picker over the view, two columns
+constexpr int PICK_W = VIEW / 2, PICK_H = VIEW / ((LineTypeInfo::COUNT + 1) / 2);
 constexpr unsigned long LIDAR_CHECK_MS = 2000;  // how often to look for a lidar while none is found
 constexpr int SCAN_TURNS = 1;
 constexpr uint16_t LINE_COLOUR = TFT_WHITE;
 constexpr int SNAP_PX = 10;  // SexyTopo's SNAP_TO_LINE_SENSITIVITY_DP, about 1 px per dp on this screen
+constexpr int MIN_LINE_PX = 10;  // SexyTopo's MINIMUM_DETAIL_SIZE_DP, smaller typed lines are dropped
 
 cyd::Display lcd;
 ScanView scanView;
@@ -62,28 +67,37 @@ bool lidarFound = false;
 bool storeOk = false;
 bool scanning = false;
 bool drawing = false;  // drawing screen open
+bool picking = false;  // line type picker open on the drawing screen
+LineType lineType = LineType::SKETCH;  // for the next line drawn
 int shown = -1;        // saved scan on the screen, -1 for none
 int sketchRevision = 0;  // of the drawing shown, 0 if it has never been saved
 
 bool inside(int x, int y, int bx, int bw) { return x >= bx && x < bx + bw && y >= BTN_Y && y < BTN_Y + BTN_H; }
 
-// Large text if it fits the button, small if not
+// Large text if it fits the button, small if not, on two lines if it still doesn't fit
 void drawButton(int x, int w, bool active, uint16_t colour, const char *text) {
   lcd.fillRoundRect(x, BTN_Y, w, BTN_H, 8, active ? colour : TFT_DARKGREY);
   lcd.setTextSize(2);
   if (lcd.textWidth(text) > w - 6) lcd.setTextSize(1);
-  lcd.drawString(text, x + w / 2, BTN_Y + BTN_H / 2);
+  const char *space = strchr(text, ' ');
+  if (lcd.textWidth(text) <= w - 6 || !space) {
+    lcd.drawString(text, x + w / 2, BTN_Y + BTN_H / 2);
+    return;
+  }
+  lcd.drawString(String(text).substring(0, space - text), x + w / 2, BTN_Y + BTN_H / 2 - 5);
+  lcd.drawString(space + 1, x + w / 2, BTN_Y + BTN_H / 2 + 5);
 }
 
 void drawButtons() {
   lcd.fillRect(0, BTN_Y, VIEW, BTN_H, TFT_BLACK);
   lcd.setTextColor(TFT_WHITE);
   lcd.setTextDatum(middle_center);
-  if (drawing) {
-    drawButton(UNDO_X, EDIT_W, sketch.changed(), TFT_NAVY, "Undo");
-    drawButton(CLEAR_X, EDIT_W, !sketch.paths().empty(), TFT_MAROON, "Clear");
-    drawButton(CANCEL_X, EDIT_W, true, TFT_NAVY, "Cancel");
-    drawButton(SAVE_X, SAVE_W, true, TFT_DARKGREEN, "Save");
+  if (drawing) {  // only Type while picking
+    drawButton(UNDO_X, EDIT_W, !picking && sketch.changed(), TFT_NAVY, "Undo");
+    drawButton(CLEAR_X, EDIT_W, !picking && !sketch.paths().empty(), TFT_MAROON, "Clear");
+    drawButton(TYPE_X, TYPE_W, true, picking ? TFT_ORANGE : TFT_PURPLE, LineTypeInfo::of(lineType).label);
+    drawButton(CANCEL_X, EDIT_W, !picking, TFT_NAVY, "Cancel");
+    drawButton(SAVE_X, EDIT_W, !picking, TFT_DARKGREEN, "Save");
   } else {
     drawButton(PREV_X, STEP_W, shown > 0, TFT_NAVY, "<");
     drawButton(SCAN_X, SCAN_W, lidarFound && !scanning, TFT_DARKGREEN,
@@ -108,13 +122,13 @@ void showLidarState() {
 }
 
 void drawPath(const Sketch::Path &path) {
-  int x0, y0, x1, y1;
-  scanView.toScreen(path.points[0], x0, y0);
-  if (path.points.size() == 1) lcd.drawPixel(x0, y0, LINE_COLOUR);
-  for (size_t i = 1; i < path.points.size(); i++, x0 = x1, y0 = y1) {
-    scanView.toScreen(path.points[i], x1, y1);
-    lcd.drawLine(x0, y0, x1, y1, LINE_COLOUR);
+  std::vector<line_style::Point> points;
+  for (const Coord &c : path.points) {
+    int x, y;
+    scanView.toScreen(c, x, y);
+    points.push_back({(float)x, (float)y});
   }
+  line_style::draw(lcd, points, path.type, LINE_COLOUR);
 }
 
 // Scan with its sketch over it, in the view
@@ -133,6 +147,39 @@ void showSaved(int i) {
   store.loadSketch(store.name(i), sketch, sketchRevision);
   drawView();
   drawButtons();
+}
+
+// The line types over the view, each with a sample, the one in use highlighted
+void drawPicker() {
+  lcd.fillRect(0, 0, VIEW, VIEW, TFT_BLACK);
+  lcd.setTextSize(1);
+  lcd.setTextColor(TFT_WHITE);
+  for (int i = 0; i < LineTypeInfo::COUNT; i++) {
+    const int x = i % 2 * PICK_W, y = i / 2 * PICK_H;
+    if (i == (int)lineType) lcd.fillRoundRect(x + 2, y + 2, PICK_W - 4, PICK_H - 4, 6, TFT_NAVY);
+    else lcd.drawRoundRect(x + 2, y + 2, PICK_W - 4, PICK_H - 4, 6, TFT_DARKGREY);
+    lcd.drawString(LineTypeInfo::of((LineType)i).label, x + 8, y + 6);
+    const float lineY = y + PICK_H * 0.62f;
+    line_style::draw(lcd, {{x + 12.0f, lineY}, {x + PICK_W - 12.0f, lineY}}, (LineType)i, LINE_COLOUR);
+  }
+}
+
+void showPicker(bool open) {
+  picking = open;
+  if (open) {
+    drawPicker();
+    showMessage("Pick the type of line");
+  } else {
+    drawView();
+    showMessage(String(LineTypeInfo::of(lineType).label) + " lines");
+  }
+  drawButtons();
+}
+
+void pressPicker(int x, int y) {
+  const int i = y / PICK_H * 2 + x / PICK_W;
+  if (i < LineTypeInfo::COUNT) lineType = (LineType)i;
+  showPicker(false);
 }
 
 void openDrawing() {
@@ -302,6 +349,11 @@ void pressScanScreen(int x, int y) {
 }
 
 void pressDrawingButtons(int x, int y) {
+  if (inside(x, y, TYPE_X, TYPE_W)) {
+    showPicker(!picking);
+    return;
+  }
+  if (picking) return;
   if (inside(x, y, UNDO_X, EDIT_W) && sketch.undo()) {  // nothing before the drawing was opened
     drawView();
     drawButtons();
@@ -312,7 +364,7 @@ void pressDrawingButtons(int x, int y) {
     drawButtons();
   }
   if (inside(x, y, CANCEL_X, EDIT_W)) cancelDrawing();
-  if (inside(x, y, SAVE_X, SAVE_W)) saveDrawing();
+  if (inside(x, y, SAVE_X, EDIT_W)) saveDrawing();
 }
 
 // Pen on the drawing screen, a line follows the pen while it stays in the view
@@ -320,11 +372,11 @@ void penOnDrawing(bool touched, int x, int y) {
   static int lastX, lastY;
   const bool onView = touched && scanView.inView(x, y);
   if (sketch.activePath() && !onView) {
-    sketch.finishPath(SNAP_PX * scanView.metresPerPixel());
+    sketch.finishPath(SNAP_PX * scanView.metresPerPixel(), MIN_LINE_PX * scanView.metresPerPixel());
     drawView();  // the line as finished, snapped and simplified
     drawButtons();  // Clear may now be possible
   } else if (onView && !sketch.activePath()) {
-    sketch.startPath(scanView.toSketch(x, y));
+    sketch.startPath(scanView.toSketch(x, y), lineType);
     lcd.drawPixel(x, y, LINE_COLOUR);
   } else if (onView && (x != lastX || y != lastY)) {
     sketch.lineTo(scanView.toSketch(x, y));
@@ -339,7 +391,10 @@ void readTouch() {
   const bool touched = lcd.touchedAt(x, y, &rx, &ry);
   const bool pressed = touched && !wasTouched;
   if (pressed) Serial.printf("TOUCH %d %d %d %d\n", x, y, rx, ry);
-  if (drawing) {
+  if (drawing && picking) {
+    if (pressed && scanView.inView(x, y)) pressPicker(x, y);
+    else if (pressed) pressDrawingButtons(x, y);
+  } else if (drawing) {
     penOnDrawing(touched, x, y);
     if (pressed && !scanView.inView(x, y)) pressDrawingButtons(x, y);
   } else if (pressed) {
