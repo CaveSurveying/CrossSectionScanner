@@ -1,0 +1,5 @@
+{"format": "XScan sketch 1", "scan": "b0001-001", "revision": 1, "sexytopo": "26c93a7a",
+"sketch": {"paths": [
+{"colour": "BLACK", "points": [{"x": -1.0000, "y": -1.0000}, {"x": 1.0000, "y": -1.0000}, {"x": 1.0000, "y": 1.0000}, {"x": -1.0000, "y": 1.0000}, {"x": -1.0000, "y": -1.0000}]},
+{"colour": "BLACK", "points": [{"x": 0.2000, "y": 0.5000}, {"x": 0.2000, "y": 0.5000}]}
+], "areas": [], "labels": [], "symbols": []}}

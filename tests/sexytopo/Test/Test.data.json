@@ -1,0 +1,101 @@
+{
+  "sexyTopoVersionName": "1.15.0",
+  "sexyTopoVersionCode": 0,
+  "name": "Test",
+  "stations": [
+    {
+      "name": "1",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 10,
+          "azimuth": 0,
+          "inclination": 0,
+          "destination": "2",
+          "wasShotBackwards": false,
+          "index": 0,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "2",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 1.5,
+          "azimuth": 270,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 0,
+          "promotedFrom": []
+        },
+        {
+          "distance": 10,
+          "azimuth": 90,
+          "inclination": 0,
+          "destination": "3",
+          "wasShotBackwards": false,
+          "index": 0,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "3",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 5,
+          "azimuth": 350,
+          "inclination": 0,
+          "destination": "4",
+          "wasShotBackwards": false,
+          "index": 0,
+          "promotedFrom": []
+        },
+        {
+          "distance": 5,
+          "azimuth": 10,
+          "inclination": 0,
+          "destination": "5",
+          "wasShotBackwards": false,
+          "index": 0,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "4",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": []
+    },
+    {
+      "name": "5",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 5,
+          "azimuth": 350,
+          "inclination": 0,
+          "destination": "6",
+          "wasShotBackwards": false,
+          "index": 0,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "6",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": []
+    }
+  ]
+}
