@@ -80,10 +80,17 @@ def revolutions_of(record):
     return record["revolutions"] if "revolutions" in record else [record["points"]]
 
 
+def samples_of(record):
+    """Samples in each turn. Board scans from FORMAT 2 keep only the returns and give the count."""
+    return record.get("samples") or [len(rev) for rev in revolutions_of(record)]
+
+
 def summarise(record):
-    for i, rev in enumerate(revolutions_of(record), 1):
-        missing = [p["angle_deg"] for p in rev if p["distance_mm"] == 0]
-        print(f"turn {i}: {len(rev)} points, {len(missing)} with no return")
+    for i, (rev, samples) in enumerate(zip(revolutions_of(record), samples_of(record)), 1):
+        returns = sum(p["distance_mm"] > 0 for p in rev)
+        print(f"turn {i}: {samples} points, {samples - returns} with no return")
+    if "samples" in record:
+        return  # no-return samples not kept, so their angles aren't known
     # Angles (to the nearest degree) with no return on every turn
     sets = [{round(p["angle_deg"]) % 360 for p in rev if p["distance_mm"] == 0} for rev in revolutions_of(record)]
     always = sorted(set.intersection(*sets)) if sets else []
@@ -130,13 +137,13 @@ def plot(record, title):
     fig, ax = plt.subplots(figsize=(8, 8))
     revolutions = revolutions_of(record)
     total = valid = 0
-    for i, rev in enumerate(revolutions, 1):
+    for i, (rev, samples) in enumerate(zip(revolutions, samples_of(record)), 1):
         pts = [p for p in rev if p["distance_mm"] > 0]
-        total += len(rev)
+        total += samples
         valid += len(pts)
         xs = [p["distance_mm"] / 1000 * math.sin(math.radians(p["angle_deg"])) for p in pts]
         ys = [p["distance_mm"] / 1000 * math.cos(math.radians(p["angle_deg"])) for p in pts]
-        ax.scatter(xs, ys, s=4, label=f"turn {i} ({len(pts)}/{len(rev)})")
+        ax.scatter(xs, ys, s=4, label=f"turn {i} ({len(pts)}/{samples})")
     if len(revolutions) > 1:
         ax.legend(loc="upper right", fontsize="small")
     ax.plot(0, 0, "r+", markersize=15)

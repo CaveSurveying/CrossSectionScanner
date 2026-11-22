@@ -8,7 +8,7 @@
 #include <algorithm>
 
 namespace {
-constexpr int FORMAT = 1;
+constexpr int FORMAT = 2;
 constexpr size_t SPARE = 8192;  // file system blocks and metadata beyond the text itself
 
 String pathOf(const String &name) { return "/" + name + ".txt"; }
@@ -60,10 +60,13 @@ String ScanStore::record(const Lidar &lidar, const Lidar::Info &info, String &na
   text += line;
   text += Lidar::infoLine(info) + "\n";
   for (int t = 0; t < lidar.turnCount(); t++) {
-    text += "T\n";
-    for (int i = lidar.turnStart(t); i < lidar.turnStart(t + 1); i++) {
-      const Lidar::Point &p = lidar.points()[i];
-      snprintf(line, sizeof line, "P %.3f %.2f %d\n", p.angleDeg(), p.distanceMm(), p.quality);
+    const Lidar::Point *first = lidar.points() + lidar.turnStart(t), *last = lidar.points() + lidar.turnStart(t + 1);
+    const auto returned = [](const Lidar::Point &p) { return p.distanceQ2 > 0; };
+    snprintf(line, sizeof line, "T %d %d\n", (int)(last - first), (int)std::count_if(first, last, returned));
+    text += line;
+    for (const Lidar::Point *p = first; p < last; p++) {
+      if (!returned(*p)) continue;  // no return, shown by the gap in the angles
+      snprintf(line, sizeof line, "P %.3f %.2f %d\n", p->angleDeg(), p->distanceMm(), p->quality);
       text += line;
     }
   }

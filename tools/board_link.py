@@ -68,8 +68,9 @@ def parse_lidar_info(line):
 
 
 def receive_scan(board):
-    """Read a scan (after SCANDATA start) and return it as a record, with the bytes of text read."""
-    revolutions, info, extra, size = [], None, {}, 0
+    """Read a scan (after SCANDATA start) and return it as a record, with the bytes of text read.
+    Raises RuntimeError, after reading to the end, if a turn's returns don't match its T line."""
+    revolutions, counts, info, extra, size = [], [], None, {}, 0
     while True:
         line = board.readline()
         if line == "SCANDATA end":
@@ -80,6 +81,7 @@ def receive_scan(board):
         word, *fields = line.split()
         if word == "T":
             revolutions.append([])
+            counts.append([int(n) for n in fields[:2]])  # samples and returns, none before FORMAT 2
         elif word == "P" and revolutions:
             deg, mm, quality = fields[:3]
             revolutions[-1].append({"quality": int(quality), "angle_deg": float(deg), "distance_mm": float(mm)})
@@ -91,7 +93,12 @@ def receive_scan(board):
             info = parse_lidar_info(line)
     if "board_name" not in extra:
         raise RuntimeError("scan has no name")
+    for i, (rev, count) in enumerate(zip(revolutions, counts), 1):
+        if count and (len(count) != 2 or count[1] != len(rev) or count[0] < count[1]):
+            raise RuntimeError(f"{extra['board_name']} turn {i}: {len(rev)} returns read, T line says {count}")
     record = make_record(info, revolutions, "board")
+    if all(counts):
+        record["samples"] = [count[0] for count in counts]
     record.update(time=None, received=datetime.now().astimezone().isoformat(timespec="seconds"), **extra)
     return record, size
 
@@ -176,7 +183,11 @@ def fetch(board, clear):
         else:
             board.send(f"GET {name}")
             board.wait_for("SCANDATA start")
-            record, got = receive_scan(board)
+            try:
+                record, got = receive_scan(board)
+            except RuntimeError as e:
+                print(f"{name}: {e}, not saved")
+                continue
             if got != size or record["board_name"] != name:
                 print(f"{name}: got {got} of {size} bytes, not saved")
                 continue

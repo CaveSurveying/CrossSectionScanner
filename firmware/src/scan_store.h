@@ -1,10 +1,13 @@
 // Scans saved in the board's flash (LittleFS), one text file each, oldest overwritten when full.
 // The text is the same as sent over USB:
-//   FORMAT 1
+//   FORMAT 2
 //   NAME b0007-003                start-up 7, scan 3 of that start-up
 //   BOOT <start-up> <scan> <ms>   ms since start-up, the board has no clock
 //   LIDAR <model> <firmware> <hardware> <serial>
-//   T                             each turn, then P <deg> <mm> <quality> lines, raw
+//   T <samples> <returns>         each turn, then a P <deg> <mm> <quality> line for each return,
+//                                 raw. Samples with no return are left out, as the gap in the angles
+//                                 shows them, and the counts check the text. FORMAT 1 had T alone
+//                                 and kept them with mm 0.
 #pragma once
 #include <Arduino.h>
 
