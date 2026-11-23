@@ -7,20 +7,31 @@
   board_link.py --list         list the scans saved on the board
   board_link.py --fetch        save the board's scans in scans/ (ones already there are skipped)
   board_link.py --fetch --clear   and then delete them from the board, once each is checked here
+  board_link.py --jsonl        only rewrite scans/xscan.jsonl from the board scans already in scans/
+  board_link.py --push SURVEY_DIR STATION=SCAN ...   put scans in a survey on the phone or emulator
 
 Board scans are saved as scans/board-<name>.json, e.g. board-b0007-003 is scan 3 after the
 board's 7th start-up, and their drawings as scans/board-<name>.sketch.json, as the board wrote them. The board has no clock, so their time is null and received is when they
-reached the computer.
+reached the computer. After --fetch, scans/xscan.jsonl is rewritten with every board scan in scans/,
+one per line in the exchange format (PLAN.md, Link with SexyTopo).
+
+--push gives each scan its station by hand until the board records it (stage 4). SURVEY_DIR is the
+survey's folder on the device, e.g. /sdcard/Documents/Cave/Trip1, holding Trip1.data.json. The scans
+go in Trip1.xscan.jsonl there over adb, one line per station, replacing any line the station had.
 """
 import argparse
 import json
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime
+from pathlib import Path
 
 import serial
 
-from scan_once import SCANS_DIR, make_record, save
+from scan_once import SCANS_DIR, make_record, samples_of, save
 
 BOARD_PORT = "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0"
 BOARD_BAUD = 460800
@@ -111,6 +122,111 @@ def save_board_scan(record):
     path = save(record, file_name(record["board_name"]))
     points = sum(len(r) for r in record["revolutions"])
     print(f"{path.name}: {len(record['revolutions'])} turns, {points} points")
+
+
+JSONL_FORMAT = "XScan scan 1"
+JSONL_PATH = SCANS_DIR / "xscan.jsonl"
+
+
+def number(value):
+    """A whole number as an int, so the JSONL has 1234 rather than 1234.0."""
+    return int(value) if value == int(value) else value
+
+
+def jsonl_line(record, station=None):
+    """A board scan record as one line of the exchange format. Anything not known is left out."""
+    if len(record["revolutions"]) != 1:
+        raise ValueError(f"{record['board_name']}: {len(record['revolutions'])} turns, one expected")
+    points = [[p["angle_deg"], number(p["distance_mm"]), p["quality"]]
+              for p in record["revolutions"][0] if p["distance_mm"]]
+    line = {"format": JSONL_FORMAT, "scan": record["board_name"]}
+    if station is not None:
+        line["station"] = station
+    if record.get("time"):
+        line["time"] = record["time"]
+    line["board"] = {key: record[key] for key in ("start_up", "scan", "ms_since_start_up") if key in record}
+    if record.get("lidar"):
+        line["lidar"] = record["lidar"]
+    line["samples"] = samples_of(record)[0]
+    line.update(returns=len(points), points=points)
+    return json.dumps(line, separators=(",", ":"))
+
+
+def write_jsonl():
+    """Rewrite scans/xscan.jsonl from the board scans in scans/, in board order."""
+    records = []
+    for path in SCANS_DIR.glob(f"{file_name('')}*.json"):
+        if not path.name.endswith(".sketch.json"):
+            records.append(json.loads(path.read_text()))
+    records.sort(key=lambda r: (r.get("start_up", 0), r.get("scan", 0)))
+    lines = []
+    for record in records:
+        try:
+            lines.append(jsonl_line(record))
+        except ValueError as e:
+            print(f"{e}, left out of {JSONL_PATH.name}")
+    JSONL_PATH.write_text("".join(f"{line}\n" for line in lines))
+    print(f"{JSONL_PATH.name}: {len(lines)} scans")
+
+
+ADB = shutil.which("adb") or str(Path.home() / "Android/Sdk/platform-tools/adb")
+
+
+def adb(*args, check=True):
+    return subprocess.run([ADB, *args], capture_output=True, text=True, check=check)
+
+
+def parse_pairs(pairs):
+    """{station: scan} from STATION=SCAN arguments, one scan per station and station per scan."""
+    chosen = {}
+    for pair in pairs:
+        station, _, scan = pair.rpartition("=")
+        if not station or not scan:
+            raise ValueError(f"{pair}: expected STATION=SCAN")
+        if station in chosen:
+            raise ValueError(f"station {station} given twice")
+        if scan in chosen.values():
+            raise ValueError(f"scan {scan} given to two stations")
+        chosen[station] = scan
+    return chosen
+
+
+def merge_jsonl(existing, new_lines):
+    """The survey's JSONL text with new_lines ({station: line}) replacing those stations' lines."""
+    kept = [line for line in existing.splitlines()
+            if line.strip() and json.loads(line).get("station") not in new_lines]
+    return "".join(f"{line}\n" for line in kept + list(new_lines.values()))
+
+
+def push(survey_dir, pairs):
+    survey_dir = survey_dir.rstrip("/")
+    survey = survey_dir.rsplit("/", 1)[-1]
+    data = adb("shell", f"cat '{survey_dir}/{survey}.data.json'", check=False)
+    if data.returncode:
+        raise SystemExit(f"{survey_dir}/{survey}.data.json not found on the device: {data.stderr.strip()}")
+    stations = {st["name"] for st in json.loads(data.stdout)["stations"]}
+    try:
+        chosen = parse_pairs(pairs)
+    except ValueError as e:
+        raise SystemExit(e)
+    missing = [st for st in chosen if st not in stations]
+    if missing:
+        raise SystemExit(f"not stations in {survey}: {', '.join(missing)}")
+    new_lines = {}
+    for station, scan in chosen.items():
+        path = SCANS_DIR / f"{file_name(scan)}.json"
+        if not path.exists():
+            raise SystemExit(f"{path.name} not found, fetch it first")
+        new_lines[station] = jsonl_line(json.loads(path.read_text()), station)
+    target = f"{survey_dir}/{survey}.xscan.jsonl"
+    existing = adb("shell", f"cat '{target}' 2>/dev/null", check=False).stdout
+    text = merge_jsonl(existing, new_lines)
+    with tempfile.TemporaryDirectory() as tmp:
+        local = Path(tmp) / "xscan.jsonl"
+        local.write_text(text)
+        adb("push", str(local), target)
+    print(f"{target}: {len(text.splitlines())} stations with scans, "
+          + ", ".join(f"{st}={scan}" for st, scan in chosen.items()) + " pushed")
 
 
 def receive_sketch(board):
@@ -219,10 +335,23 @@ def main():
     parser.add_argument("--list", action="store_true", help="list the scans saved on the board and stop")
     parser.add_argument("--fetch", action="store_true", help="save the board's scans in scans/ and stop")
     parser.add_argument("--clear", action="store_true", help="with --fetch, delete them from the board")
+    parser.add_argument("--jsonl", action="store_true", help="only rewrite scans/xscan.jsonl, no board needed")
+    parser.add_argument("--push", metavar="SURVEY_DIR", help="survey folder on the device, no board needed")
+    parser.add_argument("pairs", nargs="*", metavar="STATION=SCAN", help="with --push, the scan for each station")
     args = parser.parse_args()
     sys.stdout.reconfigure(line_buffering=True)  # show each line at once, even when piped
     if args.clear and not args.fetch:
         parser.error("--clear only works with --fetch")
+    if args.pairs and not args.push:
+        parser.error("STATION=SCAN only works with --push")
+    if args.push:
+        if not args.pairs:
+            parser.error("--push needs at least one STATION=SCAN")
+        push(args.push, args.pairs)
+        return
+    if args.jsonl:
+        write_jsonl()
+        return
 
     board = Board()
     try:
@@ -236,6 +365,7 @@ def main():
             print(f"{count} scans, {int(used) * 100 // max(int(total), 1)}% full")
         elif args.fetch:
             fetch(board, args.clear)
+            write_jsonl()
         else:
             if args.scan:
                 board.send("SCAN")
