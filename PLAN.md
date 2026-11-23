@@ -110,6 +110,30 @@ Outline agreed 2026-11-20. XScan is the working name for the scanner. It must wo
 - File export from the board's flash (board_link.py --fetch) stays, for use without SexyTopo and for checking.
 - Exchange format, discussed 2026-11-22. JSONL for SexyTopo and other drawing programs, one scan per line, so many scans can go in one file and be compressed. Each line has the scan name, time, station, orientation (heading, pitch and roll from the IMU, with direction and clino worked out from them), lidar details, the turn's samples and returns, and the points as [degrees, mm, quality] with no-returns left out. Anything not known is left out (not "-"), and the reading program works the direction out from the legs. Drawings stay in their own files, as they are edited and get revisions. The board keeps its own format, one file per scan, as LittleFS deletes the oldest scan when full and saves drawings again on each revision, which in one JSONL file would mean rewriting it all. The station and link state go in each scan's record. It is chosen for flash use and sending speed, and the receiving end (board_link.py now, SexyTopo later) writes the JSONL. board_link.py --fetch (or --jsonl alone) writes every board scan in scans/ to scans/xscan.jsonl as format XScan scan 1 (2026-11-23, tests/board_link/test_jsonl.py), with no station, facing or orientation until stage 4. Until then board_link.py --push SURVEY_DIR STATION=SCAN ... gives each scan its station by hand and writes <survey>.xscan.jsonl in a survey on the phone or emulator over adb, one line per station, after checking the stations are in the survey. Text for now as it is easy to debug. If flash or Bluetooth speed needs it at stage 6, binary points (the lidar's own 1/64 degree, 1/4 mm and quality, 5 bytes a point, about a third of the text) and compact drawing JSON (about 40% smaller).
 
+### SexyTopo side
+
+On the user's fork, branch SectionScanner from upstream main e16dc21a (2026-11-23). Test survey on the emulator's SD card, /storage/0000-0000/Test2Surveys/SectionScanner (a copy of IsoDate, 26 stations), with scans pushed by board_link.py --push.
+
+Found in SexyTopo. Saver writes only the four survey files (SurveyFile.ALL_DATA_TYPES) and deletes nothing, so <survey>.xscan.jsonl survives saving with the setting on or off. Save As writes only those four, so scans are left behind, and lines are found by station name, so a rename loses its scan. A station's cross section can be in the plan or the elevation sketch (CrossSectionActivity), and the scan belongs to the station, so it is drawn in either. The cross section view is in metres from the station, x right, y down, as the scanner's drawings.
+
+Stage 2a, show a station's scan behind its cross section, reading only (agreed 2026-11-23).
+
+1. Setting. Cross-section scanner switch in preferences_instruments.xml, pref_section_scanner, default off, read by GeneralPreferences.isSectionScannerOn(), translated into de, fr, es, it, pl, pt.
+2. File type. SexyTopoConstants.SCANS_EXTENSION xscan.jsonl and SurveyFile.SCANS, left out of ALL_DATA_TYPES so save, autosave and load are unchanged.
+3. Model. Immutable SectionScan in model/scan (scan name, station, facing, points as degrees, mm, quality, samples and returns left until needed), giving its points in the section's frame, x = -d sin θ, y = -d cos θ in metres (scan_view.cpp addPoint, y turned to down), x mirrored when facing back.
+4. Reader. ScanJsonlTranslater reads the file into station name to scan. Unknown format or bad JSON lines are logged and skipped, unknown fields ignored, the last line for a station wins.
+5. CrossSectionActivity reads the file when a section opens and the setting is on. No file, no points. A file that can't be read is logged and the section opens anyway.
+6. CrossSectionView has its own onDraw, so SketchView is left alone. It draws the station's points as small grey dots of fixed screen size, and auto-fit uses them when there are no splays.
+7. Horizontal sections are drawn unrotated until there is heading or a way to turn them by hand.
+8. Table-driven unit tests, no mocks. The reader (full line, required fields only, unknown format, bad JSON, a station twice, blank lines, extra fields) and the point frame (0, 90, 180, 270 degrees, facing on and back).
+9. Check on the emulator. b0004-001's drawing at station 5 with to_sexytopo.py, sections at 6 and 7 made in SexyTopo. Off changes nothing, on shows the points behind the sections, lined up with the drawing at 5.
+
+Written 2026-11-23 (ScanJsonlTranslater, SectionScan, CrossSectionView.drawScan, 4 new tests, 1056 unit tests pass). Drawings from b0004-001 and b0002-003 added at stations 5 and 6 of the emulator survey, to be checked on the emulator.
+
+Stage 2b, keep scans with their stations. Load the file with the survey, hold each scan against its Station, and rewrite the file on save (and Save As) with the current names. Lines for stations that no longer exist are kept as they are.
+
+Station renames, to be settled with the link (2026-11-23). SexyTopo is the authority on station names, so it updates the scanner rather than the other way round. The scan name is the lasting identity, as SexyTopo has no station ids. SexyTopo renames in its own file (2b), sends a rename while connected, and on connecting sends the scan name and current station of every scan it holds, so a rename made while apart reaches the scanner too. A scan accepted on the scanner but not yet sent when its station is renamed gets "no such station" and the user picks the station again.
+
 ## Software
 
 - PlatformIO with the Arduino framework on the ESP32
