@@ -1,0 +1,110 @@
+# XScan link with SexyTopo
+
+Protocol 1, written 2026-11-23 (PLAN.md, Link stages, 3a). The scanner (XScan) and SexyTopo both follow this, and tests/link holds example frames that both ends' tests must read the same way. tools/xscan_link.py is the reference for framing, used to make those frames and, later, to talk to either end from the computer.
+
+## Bluetooth
+
+BLE, with XScan as the peripheral and SexyTopo as the central.
+
+- XScan advertises the name XScan- followed by the last 6 hex digits of the board's MAC address, e.g. XScan-A1B2C3. SexyTopo's ScannerType recognises it by the XScan- prefix.
+- One service in the Nordic UART Service layout, so nRF Connect on a phone or bleak on the computer can stand in for either end.
+
+| | UUID | Properties | Direction |
+|---|---|---|---|
+| Service | 6E400001-B5A3-F393-E0A9-E50E24DCCA9E | | |
+| RX | 6E400002-B5A3-F393-E0A9-E50E24DCCA9E | write, write without response | SexyTopo to XScan |
+| TX | 6E400003-B5A3-F393-E0A9-E50E24DCCA9E | notify | XScan to SexyTopo |
+
+- SexyTopo asks for an MTU of 517 on connecting. Each write or notification carries at most MTU - 3 bytes, and a frame is split over as many as it needs. Writes and notifications are sent in order, one frame finished before the next starts.
+
+## Frames
+
+Each message is one JSON object, sent as a frame.
+
+```
+XS1 <length> <crc>\n<json>
+```
+
+- XS1 is the frame version. A new one only if the framing itself changes.
+- length is the number of bytes of the JSON in UTF-8, in decimal.
+- crc is the CRC-32 of those bytes (as zlib.crc32 and java.util.zip.CRC32), 8 lower-case hex digits.
+- The JSON follows the newline straight away, with nothing after it. The next frame starts with the next byte.
+- The JSON is written on one line, without spaces, as Python's json.dumps(..., separators=(",", ":")) writes it, though a reader must take any valid JSON.
+
+A frame is at most 262144 bytes of JSON (a scan with its drawing is under 30 KB).
+
+### Reading
+
+The receiver keeps the bytes it has been sent and takes frames from the front.
+
+- A header line is the bytes up to the first newline. It must be XS1, a space, the length, a space and the CRC, and no more than 32 bytes. If it isn't, or the length is over the limit, the bytes up to the next "XS1 " are dropped and reading goes on from there.
+- Once length bytes of JSON have arrived, their CRC is checked. If it doesn't match, or they aren't a JSON object with a type, the frame is dropped. A dropped frame from XScan gets a reply with result error and reason bad_checksum (or unknown_format), with no scan, so XScan sends it again.
+- Until all length bytes have arrived the frame waits. It is dropped if nothing more comes for 10 seconds or the connection ends.
+
+## Messages
+
+Every message has a type. A message with a type the receiver doesn't know is ignored, so later versions can add types. Fields a receiver doesn't know are ignored too.
+
+### Starting
+
+1. SexyTopo connects, asks for the MTU, turns on TX notifications, and sends hello.
+2. XScan answers with its own hello.
+3. If the protocols differ, both ends show it and SexyTopo disconnects.
+4. SexyTopo sends survey.
+5. XScan sends each section that hasn't had an ok, one at a time, waiting for the reply before the next.
+
+### hello (both ways)
+
+```json
+{"type":"hello","protocol":1,"app":"SexyTopo 1.15.0"}
+{"type":"hello","protocol":1,"firmware":"0.4","board":"A1B2C3"}
+```
+
+### survey (SexyTopo to XScan)
+
+On connecting, and again whenever another survey is opened.
+
+```json
+{"type":"survey","name":"Trip1","stations":["1","2","3","5a"],"scans":[{"scan":"b0004-001","station":"5a"}]}
+```
+
+- stations are oldest first. XScan offers the newest first.
+- scans are every scan SexyTopo holds, with its station's current name. XScan uses them to bring its own stations up to date, so a rename made while apart reaches it too.
+
+### station_added, station_renamed, station_deleted (SexyTopo to XScan)
+
+```json
+{"type":"station_added","name":"6"}
+{"type":"station_renamed","from":"5","to":"5a"}
+{"type":"station_deleted","name":"6"}
+```
+
+XScan changes the station on any scan that has it. A deleted station's scan loses its station and stays on XScan.
+
+### section (XScan to SexyTopo)
+
+A scan accepted with a station, and its drawing.
+
+```json
+{"type":"section","scan":{"format":"XScan scan 1","scan":"b0004-001","station":"5","orientation":"vertical","facing":"on","board":{"start_up":4,"scan":1,"ms_since_start_up":54326},"lidar":{"model":65,"firmware":"1.02","hardware":18,"serial":"53AB..."},"samples":428,"returns":320,"points":[[359.312,82.25,53]]},"sketch":{"format":"XScan sketch 1","scan":"b0004-001","revision":2,"sexytopo":"26c93a7a","sketch":{"paths":[]}},"based_on":1}
+```
+
+- scan is one line of the exchange format (PLAN.md, Exchange format), with station, orientation (vertical or horizontal) and facing (on or back) always given.
+- sketch is the drawing as saved on the board (firmware/src/sketch_file.cpp), left out if there isn't one. Its revision is the section's revision, 0 with no drawing.
+- based_on is the revision SexyTopo last acknowledged for this scan, 0 if none. SexyTopo replaces its drawing only if it hasn't been edited there since based_on.
+
+### reply (SexyTopo to XScan)
+
+One for each section.
+
+```json
+{"type":"reply","scan":"b0004-001","revision":2,"result":"ok"}
+{"type":"reply","scan":"b0004-001","revision":2,"result":"error","reason":"no_station"}
+{"type":"reply","scan":"b0004-001","revision":2,"result":"conflict"}
+```
+
+- ok, SexyTopo has the scan and drawing at this revision. A section it already has (same scan and revision) gets ok again and changes nothing.
+- error, not taken. reason is one of bad_checksum, unknown_format, no_station, bad_points, bad_sketch. scan and revision are left out when the frame couldn't be read.
+- conflict, the drawing was edited in SexyTopo since based_on. SexyTopo keeps its own and asks its user. If they choose the scanner's, it sends ok for this revision, otherwise the scan stays as conflict on XScan.
+
+XScan shows each scan as new, accepted, sent, acknowledged (after ok), error or conflict. A sent scan with no reply is sent again on the next connection.

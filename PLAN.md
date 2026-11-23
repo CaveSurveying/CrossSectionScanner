@@ -138,6 +138,30 @@ Known limit while board_link.py --push is used. Pushing while the survey is open
 
 Station renames, to be settled with the link (2026-11-23). SexyTopo is the authority on station names, so it updates the scanner rather than the other way round. The scan name is the lasting identity, as SexyTopo has no station ids. SexyTopo renames in its own file (2b), sends a rename while connected, and on connecting sends the scan name and current station of every scan it holds, so a rename made while apart reaches the scanner too. A scan accepted on the scanner but not yet sent when its station is renamed gets "no such station" and the user picks the station again.
 
+### Link stages
+
+Planned 2026-11-23, each with its own go-ahead. 3a the protocol spec, 3b SexyTopo's message handling in plain Java, 4 the Bluetooth connection in SexyTopo (ScannerType, second connection, conflict question to the user), 5 the firmware (NimBLE, accepting a scan with its station, send queue and scan states).
+
+Stage 3a, protocol spec in docs/LINK.md.
+
+- BLE service in the Nordic UART Service layout (user agreed 2026-11-23). One write characteristic SexyTopo to XScan and one notify characteristic XScan to SexyTopo, so either end can be tested with nRF Connect on a phone or bleak on the computer before the other exists. XScan is still recognised by its XScan- name.
+- Framing (agreed). Each message is one JSON object after a text header line, XS1 <length> <crc32 hex>, then a newline and the JSON. The receiver joins BLE packets until it has length bytes and checks the CRC. MTU asked for at 517, so a 6 KB scan is about 12 packets.
+- SexyTopo to XScan. hello (protocol and app version) on connecting. survey (survey name, stations oldest to newest, the scan name and current station of every scan SexyTopo holds) on connecting and when another survey is opened. station_added, station_renamed, station_deleted as they happen. reply (scan, revision, ok, error or conflict, reason) after each section.
+- XScan to SexyTopo. hello (protocol, firmware, board serial). section (the scan as an exchange format line with station, vertical or horizontal and facing, the drawing in XScan sketch 1, its revision and the revision it was based on).
+- Error reasons bad_checksum, unknown_format, no_station, bad_points, bad_sketch.
+- tests/link, good and broken example frames that the Java and C++ tests must both read the same way.
+
+Written 2026-11-23. docs/LINK.md (protocol 1), tools/xscan_link.py (frame and FrameReader, the reference for framing), tests/link/make_frames.py writing 22 example frames and cases.json (what each must give), test_frames.py reading each whole, a byte at a time, in 20-byte and in 514-byte packets (92 checks pass). Details settled in writing. The name is XScan- and the last 6 hex digits of the MAC. JSON up to 256 KB, header up to 32 bytes. A bad header drops bytes up to the next "XS1 ", a bad CRC or JSON with no type drops the frame and XScan's gets a reply error without a scan so it is sent again. A part frame is dropped after 10 s with nothing more. Unknown types and fields are ignored. section always gives orientation and facing, sketch left out with no drawing, revision 0 then.
+
+Stage 3b, SexyTopo message handling, no Android or Bluetooth.
+
+1. ScannerFrames builds a message's bytes and joins incoming packets into messages, checking length and CRC.
+2. ScannerMessages builds and reads each message type, reusing ScanJsonlTranslater for the scan line and SketchJsonTranslater for the drawing.
+3. ScannerSession handles a received section. Check its format, that the station exists and that the points and drawing read. The same scan name and revision already held gets OK and no change. Otherwise the scan goes on the station in SurveyScans, replacing any earlier one, and the drawing goes into the station's cross section.
+4. Drawing rules. With no section at the station SexyTopo makes one (user agreed 2026-11-23), a vertical one at CrossSectioner's angle, turned round if the scan faced back, placed beside the station on the plan as to_sexytopo.py does. With a section there, the drawing is replaced only if not edited in SexyTopo since the revision it was based on, otherwise the reply is conflict (asking the user whether to replace is stage 4).
+5. Edited since. SexyTopo keeps the revision received and a hash of the drawing as received in its own JSONL line for the scan, and edited means the section's drawing no longer matches the hash, so plan.json's format is unchanged.
+6. Table-driven tests, no mocks. Frames (whole, split across packets, two in one packet, bad CRC, too short), each message both ways, and session decisions (new scan, repeat, new revision, unknown station, drawing edited in SexyTopo, horizontal, faced back).
+
 ## Software
 
 - PlatformIO with the Arduino framework on the ESP32
