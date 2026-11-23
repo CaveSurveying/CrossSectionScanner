@@ -1,5 +1,7 @@
 // CrossSectionScanner, stand-alone unit: SCAN takes a lidar scan, shows it and saves it in flash.
-// ‹ and › step through saved scans, Draw opens the drawing screen for the scan shown, where
+// ‹ and › step through saved scans, Stn gives the scan shown its station from SexyTopo's list (with
+// vertical or horizontal and facing on or back), so it is sent to SexyTopo over Bluetooth (link.h),
+// and Draw opens the drawing screen for the scan shown, where
 // Type picks the kind of line (as SexyTopo's), Save keeps the drawing and Cancel puts it back as
 // it was.
 // A computer on the USB port can watch, ask for scans and fetch saved ones for debugging
@@ -28,10 +30,13 @@
 //   GET <name>      send a saved scan
 //   GETSKETCH <name>  send a saved scan's drawing
 //   DELETE <name>   delete a saved scan
+//   LINK            the link state, stations and each scan's station and status, as JSON
+// and LINK ... lines from the Bluetooth link with SexyTopo, for debugging
 #include <Arduino.h>
 #include <cyd_display.h>
 
 #include "lidar.h"
+#include "link.h"
 #include "line_style.h"
 #include "scan_store.h"
 #include "scan_view.h"
@@ -43,9 +48,12 @@ constexpr int VIEW = 240;  // square scan view at the top of the portrait screen
 constexpr int MSG_Y = VIEW + ScanView::NOTES_H;
 constexpr int BTN_Y = 272, BTN_H = 42;
 // Scan screen buttons
-constexpr int PREV_X = 4, NEXT_X = 152, STEP_W = 44;
-constexpr int SCAN_X = 52, SCAN_W = 96;
+constexpr int PREV_X = 4, NEXT_X = 116, STEP_W = 44;
+constexpr int SCAN_X = 52, SCAN_W = 60;
+constexpr int STN_X = 164, STN_W = 32;
 constexpr int DRAW_X = 200, DRAW_W = 36;
+// Station picker over the view, two columns, stations newest first in the first rows
+constexpr int STN_COLS = 2, STN_ROWS = 4, STN_CELL_W = VIEW / STN_COLS, STN_CELL_H = VIEW / (STN_ROWS + 2);
 // Drawing screen buttons
 constexpr int UNDO_X = 2, CLEAR_X = 45, TYPE_X = 88, CANCEL_X = 157, SAVE_X = 200;
 constexpr int EDIT_W = 40, TYPE_W = 66;
@@ -63,6 +71,7 @@ ScanStore store;
 Sketch sketch;
 Lidar lidar;
 Lidar::Info lidarInfo;
+Link sexytopo;  // the Bluetooth link with SexyTopo
 bool lidarFound = false;
 bool storeOk = false;
 bool scanning = false;
@@ -71,6 +80,10 @@ bool picking = false;  // line type picker open on the drawing screen
 LineType lineType = LineType::SKETCH;  // for the next line drawn
 int shown = -1;        // saved scan on the screen, -1 for none
 int sketchRevision = 0;  // of the drawing shown, 0 if it has never been saved
+bool choosingStation = false;  // station picker open on the scan screen
+int stationPage = 0;           // of the station picker, 0 for the newest
+bool pickHorizontal = false, pickBack = false;  // for the station picked
+String pendingStation;  // picked once, already with another scan, so a second tap replaces it
 
 bool inside(int x, int y, int bx, int bw) { return x >= bx && x < bx + bw && y >= BTN_Y && y < BTN_Y + BTN_H; }
 
@@ -98,12 +111,14 @@ void drawButtons() {
     drawButton(TYPE_X, TYPE_W, true, picking ? TFT_ORANGE : TFT_PURPLE, LineTypeInfo::of(lineType).label);
     drawButton(CANCEL_X, EDIT_W, !picking, TFT_NAVY, "Cancel");
     drawButton(SAVE_X, EDIT_W, !picking, TFT_DARKGREEN, "Save");
-  } else {
-    drawButton(PREV_X, STEP_W, shown > 0, TFT_NAVY, "<");
-    drawButton(SCAN_X, SCAN_W, lidarFound && !scanning, TFT_DARKGREEN,
+  } else {  // only Stn while choosing a station
+    const bool free = !choosingStation;
+    drawButton(PREV_X, STEP_W, free && shown > 0, TFT_NAVY, "<");
+    drawButton(SCAN_X, SCAN_W, free && lidarFound && !scanning, TFT_DARKGREEN,
                scanning ? "Scanning" : lidarFound ? "SCAN" : "No lidar");
-    drawButton(NEXT_X, STEP_W, shown < store.count() - 1, TFT_NAVY, ">");
-    drawButton(DRAW_X, DRAW_W, scanView.count() > 0, TFT_PURPLE, "Draw");
+    drawButton(NEXT_X, STEP_W, free && shown < store.count() - 1, TFT_NAVY, ">");
+    drawButton(STN_X, STN_W, shown >= 0, choosingStation ? TFT_ORANGE : TFT_PURPLE, "Stn");
+    drawButton(DRAW_X, DRAW_W, free && scanView.count() > 0, TFT_PURPLE, "Draw");
   }
   lcd.setTextDatum(top_left);
 }
@@ -114,6 +129,13 @@ void showMessage(const String &text) {
   lcd.setTextSize(1);
   lcd.setCursor(4, MSG_Y + 1);
   lcd.print(text);
+}
+
+// The shown scan's station and how far it has got, and whether SexyTopo is connected
+void showLinkState() {
+  if (shown < 0) return;
+  showMessage(sexytopo.describe(store.name(shown)) +
+              (sexytopo.ready() ? ", SexyTopo linked" : sexytopo.connected() ? ", SexyTopo connecting" : ""));
 }
 
 void showLidarState() {
@@ -147,6 +169,7 @@ void showSaved(int i) {
   store.loadSketch(store.name(i), sketch, sketchRevision);
   drawView();
   drawButtons();
+  showLinkState();
 }
 
 // The line types over the view, each with a sample, the one in use highlighted
@@ -180,6 +203,95 @@ void pressPicker(int x, int y) {
   const int i = y / PICK_H * 2 + x / PICK_W;
   if (i < LineTypeInfo::COUNT) lineType = (LineType)i;
   showPicker(false);
+}
+
+// Stations newest first, a page at a time, then the orientation and facing toggles, Older and No station
+void drawStationPicker() {
+  const std::vector<std::string> &stations = sexytopo.model().stations();
+  lcd.fillRect(0, 0, VIEW, VIEW, TFT_BLACK);
+  lcd.setTextColor(TFT_WHITE);
+  lcd.setTextDatum(middle_center);
+  lcd.setTextSize(2);
+  const String current = shown >= 0 ? sexytopo.model().find(store.name(shown).c_str())
+                                          ? sexytopo.model().find(store.name(shown).c_str())->station.c_str() : ""
+                                    : "";
+  for (int i = 0; i < STN_COLS * STN_ROWS; i++) {
+    const int n = stations.size() - 1 - (stationPage * STN_COLS * STN_ROWS + i);
+    if (n < 0) break;
+    const int x = i % STN_COLS * STN_CELL_W, y = i / STN_COLS * STN_CELL_H;
+    const String name = stations[n].c_str();
+    const bool taken = !sexytopo.model().scanAt(stations[n]).empty();
+    if (name == current) lcd.fillRoundRect(x + 2, y + 2, STN_CELL_W - 4, STN_CELL_H - 4, 6, TFT_NAVY);
+    else lcd.drawRoundRect(x + 2, y + 2, STN_CELL_W - 4, STN_CELL_H - 4, 6, taken ? TFT_ORANGE : TFT_DARKGREY);
+    lcd.drawString(name, x + STN_CELL_W / 2, y + STN_CELL_H / 2);
+  }
+  if (stations.empty()) {
+    lcd.setTextSize(1);
+    lcd.drawString("No stations yet,", VIEW / 2, STN_CELL_H);
+    lcd.drawString("connect SexyTopo", VIEW / 2, STN_CELL_H + 12);
+  }
+  lcd.setTextSize(1);
+  const char *labels[] = {pickHorizontal ? "Horizontal" : "Vertical", pickBack ? "Facing back" : "Facing on",
+                          "Older", "No station"};
+  for (int i = 0; i < 4; i++) {
+    const int x = i % 2 * STN_CELL_W, y = (STN_ROWS + i / 2) * STN_CELL_H;
+    lcd.fillRoundRect(x + 2, y + 2, STN_CELL_W - 4, STN_CELL_H - 4, 6, i < 2 ? TFT_PURPLE : TFT_DARKGREY);
+    lcd.drawString(labels[i], x + STN_CELL_W / 2, y + STN_CELL_H / 2);
+  }
+  lcd.setTextDatum(top_left);
+}
+
+void showStationPicker(bool open) {
+  choosingStation = open;
+  pendingStation = "";
+  if (open) {
+    const ScanLink *l = sexytopo.model().find(store.name(shown).c_str());
+    pickHorizontal = l && l->horizontal;
+    pickBack = l && l->back;
+    stationPage = 0;
+    drawStationPicker();
+    showMessage("Pick the scan's station, newest first");
+  } else {
+    drawView();
+    showLinkState();
+  }
+  drawButtons();
+}
+
+void pressStationPicker(int x, int y) {
+  const int col = x / STN_CELL_W, row = y / STN_CELL_H;
+  const String scan = store.name(shown);
+  if (row == STN_ROWS) {  // toggles
+    if (col == 0) pickHorizontal = !pickHorizontal;
+    else pickBack = !pickBack;
+    drawStationPicker();
+    return;
+  }
+  if (row == STN_ROWS + 1) {
+    if (col == 0) {  // older, back to the newest after the last page
+      const int pages = (sexytopo.model().stations().size() + STN_COLS * STN_ROWS - 1) / (STN_COLS * STN_ROWS);
+      stationPage = pages ? (stationPage + 1) % pages : 0;
+      drawStationPicker();
+    } else {
+      sexytopo.clearStation(scan);
+      showStationPicker(false);
+    }
+    return;
+  }
+  const std::vector<std::string> &stations = sexytopo.model().stations();
+  const int n = stations.size() - 1 - (stationPage * STN_COLS * STN_ROWS + row * STN_COLS + col);
+  if (n < 0) return;
+  const String station = stations[n].c_str();
+  const String other = sexytopo.model().scanAt(stations[n]).c_str();
+  if (other.length() && other != scan && pendingStation != station) {
+    pendingStation = station;
+    showMessage("Stn " + station + " has " + other + ", tap again to replace");
+    return;
+  }
+  String displaced;
+  sexytopo.accept(scan, station, pickHorizontal, pickBack, displaced);
+  showStationPicker(false);
+  if (displaced.length()) showMessage(sexytopo.describe(scan) + ", " + displaced + " lost it");
 }
 
 void openDrawing() {
@@ -230,6 +342,8 @@ void saveDrawing() {
   sketchRevision++;
   Serial.printf("SKETCH SAVED %s %d %d\n", name.c_str(), sketchRevision, overwritten);
   sendSketch(name);
+  sexytopo.scansChanged();
+  sexytopo.drawingSaved(name);
   if (overwritten) {
     showSaved(shown - overwritten);  // the older scans before it were overwritten
     showMessage(String("Drawing saved, flash full so ") + overwritten + " oldest overwritten");
@@ -261,6 +375,7 @@ void keepScan() {
   sendScanText(text);
   if (overwritten >= 0) {
     Serial.printf("SAVED %s %d\n", name.c_str(), overwritten);
+    sexytopo.scansChanged();
     showSaved(store.count() - 1);
     if (overwritten) showMessage(String("Saved, flash full so ") + overwritten + " oldest overwritten");
     else showMessage(String("Saved, flash ") + store.percentFull() + "% full");
@@ -295,13 +410,15 @@ void startScan() {
 }
 
 void handleLine(const String &line) {
-  if (drawing && (line == "SCAN" || line.startsWith("DELETE "))) {
+  if ((drawing || choosingStation) && (line == "SCAN" || line.startsWith("DELETE "))) {
     Serial.println("BUSY drawing");
   } else if (line == "?") {
     Serial.println("READY");
     sendLidarInfo();
   } else if (line == "SCAN") {
     startScan();
+  } else if (line == "LINK") {
+    sexytopo.print(Serial);
   } else if (line == "LIST") {
     store.list(Serial);
   } else if (line.startsWith("GET ")) {
@@ -317,6 +434,7 @@ void handleLine(const String &line) {
     const bool deleted = store.remove(name);
     Serial.printf(deleted ? "DELETED %s\n" : "DELETE failed %s\n", name.c_str());
     if (!deleted) return;
+    sexytopo.scansChanged();
     if (store.count()) {
       showSaved(constrain(shown, 0, store.count() - 1));
     } else {
@@ -345,6 +463,7 @@ void pressScanScreen(int x, int y) {
   if (inside(x, y, SCAN_X, SCAN_W) && lidarFound) startScan();
   if (inside(x, y, PREV_X, STEP_W) && shown > 0) showSaved(shown - 1);
   if (inside(x, y, NEXT_X, STEP_W) && shown < store.count() - 1) showSaved(shown + 1);
+  if (inside(x, y, STN_X, STN_W) && shown >= 0) showStationPicker(true);
   if (inside(x, y, DRAW_X, DRAW_W) && scanView.count() > 0) openDrawing();
 }
 
@@ -394,6 +513,9 @@ void readTouch() {
   if (drawing && picking) {
     if (pressed && scanView.inView(x, y)) pressPicker(x, y);
     else if (pressed) pressDrawingButtons(x, y);
+  } else if (choosingStation) {
+    if (pressed && scanView.inView(x, y)) pressStationPicker(x, y);
+    else if (pressed && inside(x, y, STN_X, STN_W)) showStationPicker(false);
   } else if (drawing) {
     penOnDrawing(touched, x, y);
     if (pressed && !scanView.inView(x, y)) pressDrawingButtons(x, y);
@@ -408,6 +530,7 @@ void setup() {
   Serial.begin(BAUD);
   lcd.start();
   storeOk = store.begin();
+  sexytopo.begin(store);
   lidar.begin();
   for (int i = 0; i < 10 && !lidarFound; i++) {  // the lidar may still be starting up
     lidarFound = lidar.readInfo(lidarInfo);
@@ -433,5 +556,6 @@ void loop() {
   }
   readSerial();
   readTouch();
+  if (sexytopo.loop() && !drawing && !choosingStation) showLinkState();
   delay(10);
 }

@@ -116,7 +116,7 @@ On the user's fork, branch SectionScanner from upstream main e16dc21a (2026-11-2
 
 Found in SexyTopo. Saver writes only the four survey files (SurveyFile.ALL_DATA_TYPES) and deletes nothing, so <survey>.xscan.jsonl survives saving with the setting on or off. Save As writes only those four, so scans are left behind, and lines are found by station name, so a rename loses its scan. A station's cross section can be in the plan or the elevation sketch (CrossSectionActivity), and the scan belongs to the station, so it is drawn in either. The cross section view is in metres from the station, x right, y down, as the scanner's drawings.
 
-Stage 2a, show a station's scan behind its cross section, reading only (agreed 2026-11-23).
+Link 2a, show a station's scan behind its cross section, reading only (agreed 2026-11-23).
 
 1. Setting. Cross-section scanner switch in preferences_instruments.xml, pref_section_scanner, default off, read by GeneralPreferences.isSectionScannerOn(), translated into de, fr, es, it, pl, pt.
 2. File type. SexyTopoConstants.SCANS_EXTENSION xscan.jsonl and SurveyFile.SCANS, left out of ALL_DATA_TYPES so save, autosave and load are unchanged.
@@ -130,7 +130,7 @@ Stage 2a, show a station's scan behind its cross section, reading only (agreed 2
 
 Written 2026-11-23 (ScanJsonlTranslater, SectionScan, CrossSectionView.drawScan, 4 new tests, 1056 unit tests pass). Drawings from b0004-001 and b0002-003 added at stations 5 and 6 of the emulator survey, to be checked on the emulator.
 
-Stage 2b, keep scans with their stations. Load the file with the survey, hold each scan against its Station, and rewrite the file on save (and Save As) with the current names. Lines for stations that no longer exist are kept as they are.
+Link 2b, keep scans with their stations. Load the file with the survey, hold each scan against its Station, and rewrite the file on save (and Save As) with the current names. Lines for stations that no longer exist are kept as they are.
 
 Written 2026-11-23. Renames keep the Station object (SurveyUpdater.renameStation), so SurveyScans holds scans against it and they follow. Loader reads the file (or its autosave when restoring) after the survey files, and Saver writes it, and its autosave, after them, only if the survey has scans. Kept in step whether the setting is on or off (user 2026-11-23), the setting only shows or hides the points. Each scan keeps the line it was read from and only station is changed on writing, so lidar, board and anything else SexyTopo doesn't read survive. Lines with no matching station, that can't be read, or replaced by a later line for the same station are kept as they are and written first, so a station's own scan stays its last line. A deleted station's scan is written with the name it last had. 9 tests in ScanJsonlTranslaterTest and SectionScanTest, 1061 unit tests pass. Rename and Save As checked on the emulator 2026-11-23. Save As first wrote <survey>.xscan.jsonl.txt, as Android adds .txt to a new text/plain file with a name it doesn't know, so the scans file now uses application/octet-stream as the autosaves do. That workaround is now one constant, SexyTopoConstants.MIME_TYPE_NO_EXTENSION, used by the autosaves, the scans file and Survex export's .espec file (which had its own copy, SurvexConstants.ESPEC_MIME_TYPE, now removed).
 
@@ -140,9 +140,9 @@ Station renames, to be settled with the link (2026-11-23). SexyTopo is the autho
 
 ### Link stages
 
-Planned 2026-11-23, each with its own go-ahead. 3a the protocol spec, 3b SexyTopo's message handling in plain Java, 4 the Bluetooth connection in SexyTopo (ScannerType, second connection, conflict question to the user), 5 the firmware (NimBLE, accepting a scan with its station, send queue and scan states).
+Planned 2026-11-23, each with its own go-ahead. Named Link 2a to Link 5 so they aren't confused with the scanner's own stages 0 to 7 below. Link 2a and 2b SexyTopo showing and keeping scans (above), Link 3a the protocol spec, Link 3b SexyTopo's message handling in plain Java, Link 4 the Bluetooth connection in SexyTopo (ScannerType, second connection, conflict question to the user), Link 5 the firmware (NimBLE, accepting a scan with its station, send queue and scan states, which is the scanner's stage 4 and part of its stage 6).
 
-Stage 3a, protocol spec in docs/LINK.md.
+Link 3a, protocol spec in docs/LINK.md.
 
 - BLE service in the Nordic UART Service layout (user agreed 2026-11-23). One write characteristic SexyTopo to XScan and one notify characteristic XScan to SexyTopo, so either end can be tested with nRF Connect on a phone or bleak on the computer before the other exists. XScan is still recognised by its XScan- name.
 - Framing (agreed). Each message is one JSON object after a text header line, XS1 <length> <crc32 hex>, then a newline and the JSON. The receiver joins BLE packets until it has length bytes and checks the CRC. MTU asked for at 517, so a 6 KB scan is about 12 packets.
@@ -153,16 +153,60 @@ Stage 3a, protocol spec in docs/LINK.md.
 
 Written 2026-11-23. docs/LINK.md (protocol 1), tools/xscan_link.py (frame and FrameReader, the reference for framing), tests/link/make_frames.py writing 22 example frames and cases.json (what each must give), test_frames.py reading each whole, a byte at a time, in 20-byte and in 514-byte packets (92 checks pass). Details settled in writing. The name is XScan- and the last 6 hex digits of the MAC. JSON up to 256 KB, header up to 32 bytes. A bad header drops bytes up to the next "XS1 ", a bad CRC or JSON with no type drops the frame and XScan's gets a reply error without a scan so it is sent again. A part frame is dropped after 10 s with nothing more. Unknown types and fields are ignored. section always gives orientation and facing, sketch left out with no drawing, revision 0 then.
 
-Stage 3b, SexyTopo message handling, no Android or Bluetooth.
+Link 3b, SexyTopo message handling, no Android or Bluetooth.
 
 1. ScannerFrames builds a message's bytes and joins incoming packets into messages, checking length and CRC.
 2. ScannerMessages builds and reads each message type, reusing ScanJsonlTranslater for the scan line and SketchJsonTranslater for the drawing.
 3. ScannerSession handles a received section. Check its format, that the station exists and that the points and drawing read. The same scan name and revision already held gets OK and no change. Otherwise the scan goes on the station in SurveyScans, replacing any earlier one, and the drawing goes into the station's cross section.
-4. Drawing rules. With no section at the station SexyTopo makes one (user agreed 2026-11-23), a vertical one at CrossSectioner's angle, turned round if the scan faced back, placed beside the station on the plan as to_sexytopo.py does. With a section there, the drawing is replaced only if not edited in SexyTopo since the revision it was based on, otherwise the reply is conflict (asking the user whether to replace is stage 4).
+4. Drawing rules. With no section at the station SexyTopo makes one (user agreed 2026-11-23), a vertical one at CrossSectioner's angle, turned round if the scan faced back, placed beside the station on the plan as to_sexytopo.py does. With a section there, the drawing is replaced only if not edited in SexyTopo since the revision it was based on, otherwise the reply is conflict (asking the user whether to replace is Link 4).
 5. Edited since. SexyTopo keeps the revision received and a hash of the drawing as received in its own JSONL line for the scan, and edited means the section's drawing no longer matches the hash, so plan.json's format is unchanged.
 6. Table-driven tests, no mocks. Frames (whole, split across packets, two in one packet, bad CRC, too short), each message both ways, and session decisions (new scan, repeat, new revision, unknown station, drawing edited in SexyTopo, horizontal, faced back).
 
-Written 2026-11-23 in SexyTopo's comms/scanner (ScannerFrames, ScannerMessages, ScannerSession). The shared frames are copied into app/src/test/resources/xscan-link with the commit they came from. SexyTopo's record of what it took is a sexytopo object (revision, sketch_hash, a SHA-256 of the drawing as SexyTopo writes it) added to its JSONL line for the scan. A scan sent with a new station moves there. A section with no drawing gets an empty section if the station has none, and leaves an existing drawing alone. A hand-made section with a drawing counts as edited, an empty one doesn't. If the orientation changes the section is replaced at the same place, otherwise only its drawing. A conflict's Outcome holds the change, so stage 4 can apply it if the user chooses the scanner's drawing. SketchJsonTranslater's sub-sketch reader, writer and isSketchEmpty made public for reuse. 24 tests in the scanner classes, 1076 unit tests pass.
+Written 2026-11-23 in SexyTopo's comms/scanner (ScannerFrames, ScannerMessages, ScannerSession). The shared frames are copied into app/src/test/resources/xscan-link with the commit they came from. SexyTopo's record of what it took is a sexytopo object (revision, sketch_hash, a SHA-256 of the drawing as SexyTopo writes it) added to its JSONL line for the scan. A scan sent with a new station moves there. A section with no drawing gets an empty section if the station has none, and leaves an existing drawing alone. A hand-made section with a drawing counts as edited, an empty one doesn't. If the orientation changes the section is replaced at the same place, otherwise only its drawing. A conflict's Outcome holds the change, so Link 4 can apply it if the user chooses the scanner's drawing. SketchJsonTranslater's sub-sketch reader, writer and isSketchEmpty made public for reuse. 24 tests in the scanner classes, 1076 unit tests pass.
+
+Link 4, the Bluetooth connection in SexyTopo, planned 2026-11-23, 4a then 4b (user agreed).
+
+Found in SexyTopo. The instrument is one static comms, and BleCommunicator is tied to DeviceActivity (it updates the instrument switch), so the scanner gets its own small connection class reusing ReconnectionPolicy and the Nordic library as DistoXBleManager does (which uses the same Nordic UART UUIDs, told apart by name). The Nordic library's writeCharacteristic(...).split() splits frames to the MTU. Station changes are only broadcast as SURVEY_UPDATED_EVENT, including another survey being opened (SurveyManager.setCurrentSurvey). The device screen uses Android's discovery, which finds BLE devices too, and remembers non-bonding devices by address in preferences. Readings are applied on the main thread, and sections must be too.
+
+Link 4a, link logic, test scanner and device screen, no real Bluetooth.
+
+1. ScannerType in comms/scanner, XSCAN by the XScan- name, and TEST for the developer test scanner. Scanners kept out of the instrument search and instruments out of the scanner's.
+2. StationWatcher keeps a copy of the survey's stations and names, and on each survey update compares. Another survey object sends survey, a new Station station_added, the same Station with a new name station_renamed, a Station gone station_deleted. Comparing Station objects means a rename is never a delete and an add, and the rename and delete code needs no hooks.
+3. ScannerLink, owned by SurveyManager for the life of the app, given a connection that sends and receives bytes. Runs LINK.md's start (hello, protocol check, survey), sends station changes, joins frames, passes sections to ScannerSession on the main thread, sends each reply, broadcasts the survey update and autosaves after a change, drops a part frame after 10 s.
+4. Conflict (dialog agreed). ScannerLink broadcasts it and whichever SexyTopo screen is open asks whether to keep SexyTopo's drawing or use the scanner's. Using the scanner's applies the change held by the conflict and sends ok.
+5. Test scanner, developer mode only, a pretend connection like the test instrument that sends the shared example sections and the survey's own scans, so the emulator runs everything but the radio.
+6. Device screen. A Cross-section scanner section, shown only with the setting on, with the scanner's name, Find and Forget, a Connect switch and a status line (connected, firmware, last section). Link events in the device log.
+7. Strings translated into de, fr, es, it, pl, pt.
+8. Tests. StationWatcher (each change, two at once, another survey) and ScannerLink with a pretend connection (start, protocol mismatch, a section, a dropped frame, a part frame timing out, station changes while connected).
+
+Link 4b, the Bluetooth connection.
+
+1. ScannerBleManager on the Nordic BleManager. Checks the Nordic UART service, asks for MTU 517, turns on notifications, passes bytes to ScannerLink, writes frames with split().
+2. Remembered by address with no bond, ReconnectionPolicy for reconnecting, with the existing auto-reconnect setting.
+3. Tested on the phone with the board, as this computer has no Bluetooth and the emulator's is virtual. So Link 5 (at least NimBLE, hello, survey and sending a section) comes before 4b can be checked.
+
+Link 4a written 2026-11-23, SexyTopo commit d141b5dd. ScannerLink (protocol over any ScannerConnection), StationWatcher, ScannerType, ScannerService (a singleton beside SurveyManager rather than owned by it, holding the link for the life of the app and listening for survey updates), TestScannerConnection (developer mode), ScannerConflictDialog (started and stopped by SexyTopoActivity, so every screen asks), and a scanner card in the device screen. The remembered scanner is kept by address, with "test" for the test scanner. Tried on the emulator with the test scanner. Hello and survey were sent, a section was taken and placed 3 m from the station with its points and drawing, and a section after an edit in SexyTopo raised the question, with "Use the scanner's" replacing the drawing. 1087 unit tests pass.
+
+Link 4b written 2026-11-23, SexyTopo commit 5098b851. BleScannerConnection with the Nordic library (MTU 517, notifications into the link, writes split to the MTU, ReconnectionPolicy). The link ignores a disconnect from a connection already replaced. Not yet tried with a real scanner.
+
+Link 5, the firmware side, written 2026-11-23 (user agreed to go on to it and flash).
+
+- NimBLE-Arduino 1.4.3 (link_ble), advertising XScan- and the last 6 hex digits of the MAC, the name only as the service UUID doesn't also fit. Received bytes are held behind a mutex, as NimBLE calls back from its own task. Frames go out as notifications of MTU - 3 bytes from loop(), retried next time if the stack is out of buffers.
+- link_frame (frames and the reader, as xscan_link.py), link_model (stations, each scan's station, orientation, facing, state and acknowledged revision) and exchange (a saved scan as an XScan scan 1 line, as board_link.py writes it) are plain C++, checked on the computer by tests/firmware_link/run.sh (the shared frames whole and a byte at a time, the model, and the exchange line against make_expected.py's from board_link.py).
+- The link state is one file, /link.json, rather than in each scan's record as planned above, so the scan files are never rewritten. Scans overwritten or deleted are dropped from it.
+- link (the board's side). Answers hello, keeps the survey's stations and station changes, sends accepted scans one at a time with based_on, and takes each reply (a reply for an older revision changes nothing, a reply with no scan sends again). A section with no reply in 30 s is sent again, and anything sent without a reply goes again on the next connection. A new drawing revision sends the scan again.
+- On the screen, Stn opens a station picker over the view, newest first 8 at a time, with Vertical/Horizontal and Facing on/back toggles, Older and No station. A station that already has a scan needs a second tap, and the old scan loses it. The message line shows the scan's station, orientation, facing and state, and whether SexyTopo is linked. LINK over USB prints the state.
+- Not yet done. Typing a station when no survey has been received, a protocol mismatch shown on the screen, and the scan states shown in the list of scans.
+- Flash 77% used (NimBLE about 0.5 MB), RAM 26% before the heap. Flashed 2026-11-23 and checked over USB (boots, READY, LINK gives the empty state). Bluetooth not yet tried, as this computer has none.
+
+Trying it on the phone (Link 4b and 5 together).
+
+1. SexyTopo built from SectionScanner on the phone, with Cross-section scanner on in the Instruments settings, and a survey open.
+2. Device screen, scanner card, Find. The log should show Found scanner XScan-xxxxxx. Then Connect to scanner. The log should show the scanner ready, and the board's message line SexyTopo linked.
+3. On the board, a scan, Stn, a station. The board should show sent then acknowledged, and SexyTopo's log the scan taken, with the points and section at that station.
+4. Draw on the board and Save. It should be sent again and replace the drawing. Edit the section in SexyTopo, then draw and save on the board again, and SexyTopo should ask which to keep.
+5. Rename and delete a station in SexyTopo, and the board's picker and scan should follow.
+6. If anything goes wrong, a serial monitor on USB (pio device monitor -b 460800) shows the LINK lines, and LINK prints the state.
 
 ## Software
 
