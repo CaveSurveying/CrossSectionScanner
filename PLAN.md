@@ -162,6 +162,8 @@ Stage 3b, SexyTopo message handling, no Android or Bluetooth.
 5. Edited since. SexyTopo keeps the revision received and a hash of the drawing as received in its own JSONL line for the scan, and edited means the section's drawing no longer matches the hash, so plan.json's format is unchanged.
 6. Table-driven tests, no mocks. Frames (whole, split across packets, two in one packet, bad CRC, too short), each message both ways, and session decisions (new scan, repeat, new revision, unknown station, drawing edited in SexyTopo, horizontal, faced back).
 
+Written 2026-11-23 in SexyTopo's comms/scanner (ScannerFrames, ScannerMessages, ScannerSession). The shared frames are copied into app/src/test/resources/xscan-link with the commit they came from. SexyTopo's record of what it took is a sexytopo object (revision, sketch_hash, a SHA-256 of the drawing as SexyTopo writes it) added to its JSONL line for the scan. A scan sent with a new station moves there. A section with no drawing gets an empty section if the station has none, and leaves an existing drawing alone. A hand-made section with a drawing counts as edited, an empty one doesn't. If the orientation changes the section is replaced at the same place, otherwise only its drawing. A conflict's Outcome holds the change, so stage 4 can apply it if the user chooses the scanner's drawing. SketchJsonTranslater's sub-sketch reader, writer and isSketchEmpty made public for reuse. 24 tests in the scanner classes, 1076 unit tests pass.
+
 ## Software
 
 - PlatformIO with the Arduino framework on the ESP32
