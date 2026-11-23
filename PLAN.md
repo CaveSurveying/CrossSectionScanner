@@ -24,6 +24,18 @@ The device should talk to SexyTopo and other cave surveying software. For now th
 - Lidar lead (Slamtec C1 datasheet v1.1), XH2.54 5-pin socket, red VCC 5 V (4.8 to 5.2 V, 230 mA running, 800 mA at start-up), yellow TX (lidar out, 3.3 V), green RX (lidar in), black GND.
 - Old CYD walk-about wiring (proposed, pin order on the board connectors still to read off the silkscreen). Red to P1 VIN, black to P1 GND, yellow to CN1 IO27, green to CN1 IO22. Needs two board plugs. The earlier idea was lidar TX to GPIO 35, lidar RX from GPIO 22 (UART2). That leaves 27 plus 26 or the LED pins for the IMU (I2C needs two, a BNO085 in UART-RVC mode needs one).
 
+### Next screen, LCDwiki E32R35T
+
+Bought 2026-11-22, as the 2.4" E32R24P is small. Same LCDwiki family and ESP32-32E module, from its product page (lcdwiki.com/3.5inch_ESP32-32E_Display, the schematic and user manual still to read for connector pin order before wiring).
+
+- 3.5" 480x320 TN panel (not IPS, so colours shift more off angle), ST7796 on 4-wire SPI (IO15 CS, IO2 DC, IO14 CLK, IO13 MOSI, IO12 MISO, IO27 backlight)
+- XPT2046 resistive touch on the same SPI bus (CS IO33, interrupt IO36). E32N35T is the same board with no touch.
+- 2-pin battery socket with a TP4054 charger from USB-C (about 290 mA), battery voltage on IO34
+- SPI plug IO21, IO18, IO19, IO23 (shared with the SD slot, left empty), for the lidar's serial as on the E32R24P
+- I2C plug, SCL IO25, SDA IO32, for the GY-85
+- IO35 and IO39 input only, free, e.g. for a physical button
+- Firmware port: a new board in cyd_display, touch calibration, and a screen layout that scales with the screen size (the layout now assumes 240 px wide)
+
 ### Lidar
 
 Slamtec RPLIDAR C1, label C1M1-R2 (photo in this folder). Kit includes a USB adapter board (CP2102N, shows as /dev/ttyUSB1 here, the CYD is the CH340 on /dev/ttyUSB0). Checked 2026-11-19 over USB, GET_INFO gives model 0x41, firmware 1.02, hardware 18, serial matching the label, GET_HEALTH good. The USB board also lets a desktop script grab scans for testing before the ESP32 code exists. Figures from the Slamtec datasheet (v1.0/v1.1).
@@ -43,13 +55,13 @@ To find out by testing
 
 ### IMU (later)
 
-Candidates with on-chip fusion, which saves ESP32 work and gives a stable tilt and heading
+GY-85, chosen 2026-11-22 (the user has one). Raw sensors on I2C, no fusion on board. ADXL345 accelerometer (tilt, about 0.25 degree resolution), ITG-3205 gyro, and an HMC5883L compass, though many boards have a QMC5883L clone instead (different address and registers, read the chip marking, L883 is HMC, DA 5883 is QMC). No clock stretching, so it works on the ESP32's I2C.
 
-- BNO085 (good fusion, I2C or UART)
-- BNO055 (older, simple)
-- ICM-20948 with software fusion (cheaper, more work)
-
-The lidar motor and its magnet sit close to the compass, so heading needs calibration in the final layout and a check of how much the motor disturbs it. Tilt (from the accelerometer) is much less affected.
+- The device is held still for a scan, so tilt comes from the accelerometer and heading from the tilt-compensated compass. The gyro is only for smoothing if needed.
+- Calibration in the finished case, as survey instruments (DistoX) do, from readings in many orientations. It solves two things at once. Sensor calibration (compass hard and soft iron from the motor magnet, screws and battery cans, accelerometer offsets and scale) and alignment (how the board sits against the lidar's 0 degrees and scan plane), which is needed with any IMU. Fixed and repeatable, only changed by recalibrating.
+- Interference that changes (motor current, the spinning lidar magnet, battery current, backlight) can't be calibrated out. Mount the GY-85 as far from the motor and battery as the case allows, read the compass with the lidar motor stopped just before the scan, and first log the compass with the motor on and off and the backlight up and down to see how big it is.
+- A few degrees of heading is enough for a section. SexyTopo can work the direction out from the legs anyway. Tilt matters more, to know the scan plane is vertical.
+- Others considered. BNO085, on-chip fusion and self-calibration, but its I2C clock stretching doesn't work well with the ESP32 (UART or SPI would), and its calibration can't be seen or controlled and adapts in use. BNO055, similar I2C trouble. ICM-20948, raw sensors like the GY-85.
 
 ### Power and case (later)
 
@@ -82,16 +94,18 @@ Raw data is always kept, so processing can be redone later off the device.
 
 Outline agreed 2026-11-20. XScan is the working name for the scanner. It must work on its own, and the SexyTopo link is an addition. The SexyTopo side is an upstream change, worked on in the user's fork.
 
-- Two way, over Bluetooth (BLE or Classic SPP, to be chosen, SexyTopo already handles both kinds of instrument). Each message carries a length and a checksum.
-- SexyTopo to XScan. The survey name and its stations on connecting, then each new station as it is created (renames and deletions too). XScan offers the newest station first.
-- Accept on XScan. A scan is sent only once the user accepts it, giving the station, vertical or horizontal, and facing on or back. Used alone, the station is typed. Scans not accepted stay on XScan.
+- Two way, over BLE (chosen 2026-11-23). NimBLE on the ESP32 is much lighter than Classic and BLE together on a board with no PSRAM, a scan is only a few KB, and SexyTopo's newer instruments already use BLE (Nordic BLE library). Each message carries a length and a checksum.
+- SexyTopo holds only one instrument connection (SexyTopoActivity comms), so XScan needs a second connection beside the DistoX rather than a new InstrumentType.
+- SexyTopo to XScan. The survey name and its stations on connecting, then each new station as it is created (renames and deletions too). XScan keeps the last list in flash, so stations can still be picked when the link drops, and offers the newest station first. A rename changes the station on its scan, a deletion clears it and the scan stays on XScan.
+- One scan per station, as SexyTopo allows one cross section per station, either vertical or horizontal (Sketch.getCrossSectionDetail, create greyed out once there is one).
+- Accept on XScan. A scan is sent only once the user accepts it, giving the station, vertical or horizontal, and facing on or back. The station is picked from SexyTopo's list, and typed only when no survey has been received. If the station already has a scan, XScan asks whether to replace it, and the old scan loses its station but is kept. Only scans with a station are sent. Others stay on XScan (board_link.py --fetch still gets them). A typed station SexyTopo doesn't have gets an error, and the scan waits until its station is changed.
 - XScan to SexyTopo. A section message with the scan name, station, orientation, facing, raw points, sketch, sketch revision and checksum.
 - SexyTopo checks it (format version, checksum, station exists, sketch reads) and replies OK or an error with the reason. XScan shows each scan as new, accepted, sent, acknowledged or error. Anything not acknowledged is sent again on the next connection, and SexyTopo ignores one it already has (same scan name and revision).
-- Storage in SexyTopo. A subfolder beside the survey with one file per station that has a scan, holding its vertical and horizontal sections (raw points, sketch, revision, scan name). The points are not added to the survey as legs. They are loaded only when the cross section is opened and drawn behind it, so hundreds of points don't slow the survey views. Splays made from them for export can come later.
+- Storage in SexyTopo (changed 2026-11-23 to follow the exchange format). <survey>.xscan.jsonl beside the survey, one line per station with a scan, in the exchange format below. A new scan for a station replaces its line and the file is rewritten (it is small). The drawing goes into that station's cross section in plan.json, as to_sexytopo.py does now, with the revision rule under Sketches. The points are not added to the survey as legs. They are loaded only when the cross section is opened and drawn behind it, so hundreds of points don't slow the survey views. Splays made from them for export can come later.
 - With no direction from the scanner, SexyTopo takes a vertical scan as lying in the plane it uses now for that station's cross section (CrossSectioner), turned round if the user faced back. A horizontal scan is a plan slice, but with no heading it can't be put north up, so the SexyTopo user rotates it until the IMU gives heading.
 - Sketches. Drawn on XScan, and can be changed in SexyTopo. The user sends a changed sketch again from XScan, with a new revision number and the revision it was based on. SexyTopo replaces its copy only if it hasn't been edited there since that revision. If it has, SexyTopo keeps its own, replies conflict and asks its user whether to replace. Sketches are not sent back to XScan for now. Two-way sketch updates only if this proves not enough.
 - File export from the board's flash (board_link.py --fetch) stays, for use without SexyTopo and for checking.
-- Exchange format, discussed 2026-11-22. JSONL for SexyTopo and other drawing programs, one scan per line, so many scans can go in one file and be compressed. Each line has the scan name, time, station, orientation (heading, pitch and roll from the IMU, with direction and clino worked out from them), lidar details, the turn's samples and returns, and the points as [degrees, mm, quality] with no-returns left out. Anything not known is left out (not "-"), and the reading program works the direction out from the legs. Drawings stay in their own files, as they are edited and get revisions. The board keeps its own format, chosen for flash use and sending speed, and the receiving end (board_link.py now, SexyTopo later) writes the JSONL. Text for now as it is easy to debug. If flash or Bluetooth speed needs it at stage 6, binary points (the lidar's own 1/64 degree, 1/4 mm and quality, 5 bytes a point, about a third of the text) and compact drawing JSON (about 40% smaller).
+- Exchange format, discussed 2026-11-22. JSONL for SexyTopo and other drawing programs, one scan per line, so many scans can go in one file and be compressed. Each line has the scan name, time, station, orientation (heading, pitch and roll from the IMU, with direction and clino worked out from them), lidar details, the turn's samples and returns, and the points as [degrees, mm, quality] with no-returns left out. Anything not known is left out (not "-"), and the reading program works the direction out from the legs. Drawings stay in their own files, as they are edited and get revisions. The board keeps its own format, one file per scan, as LittleFS deletes the oldest scan when full and saves drawings again on each revision, which in one JSONL file would mean rewriting it all. The station and link state go in each scan's record. It is chosen for flash use and sending speed, and the receiving end (board_link.py now, SexyTopo later) writes the JSONL. Text for now as it is easy to debug. If flash or Bluetooth speed needs it at stage 6, binary points (the lidar's own 1/64 degree, 1/4 mm and quality, 5 bytes a point, about a third of the text) and compact drawing JSON (about 40% smaller).
 
 ## Software
 
@@ -127,7 +141,7 @@ Outline agreed 2026-11-20. XScan is the working name for the scanner. It must wo
 - Is the CYD in PlayDisplay-touch.yaml this same board (assumed yes)?
 - Horizontal sections are plan slices at a station, as SexyTopo already has. Answered 2026-11-20.
 - Should a section be one revolution or several averaged? Five-turn tests 2026-11-19 gave 400 to 456 points a turn with about 12% no return, mostly at the same angles each turn. The motor slows over the first few seconds, but the user says there is no need to wait for it, and 400 points is already far more than needed. A thinned set for export and splays, raw kept. How to thin is to be decided from what we get in the cave.
-- Which IMU, and is heading needed or only tilt?
+- Which IMU, and is heading needed or only tilt? GY-85, heading to a few degrees and tilt. Answered 2026-11-22.
 - Where is the device held relative to the station, and how is that offset recorded?
 
 ## Stage 3 plan, drawing round the scan
