@@ -69,6 +69,8 @@ GY-85, chosen 2026-11-22 (the user has one). Raw sensors on I2C, no fusion on bo
 - The E32R24P has a 2-pin battery connector with a TP4054 charger from USB-C (about 300 mA, R27 3.3 kΩ), automatic switch to battery when USB is removed, and battery voltage on IO34. On battery the board runs from the cell through its 3.3 V regulator, and P2's 5 V (USB only) is off, so the lidar needs a 5 V boost converter from the battery (at least 1 A for the 800 mA start-up). Route for the finished device is one cell, board charging over USB-C, boost to the lidar, battery level on screen. Check battery lead polarity against the board before plugging in.
 - waterproof, mudproof case with a clear window for the lidar, condensation is a known lidar problem in caves
 - a physical button as well as the screen button is worth considering for muddy hands
+- Decided 2026-11-24. Start with one 18650 (2800 mAh), the box sized for two in parallel later. Parallel only, never series (the board's battery socket and TP4054 are for one cell). Not protected cells, the user considers their protection circuits a fire risk. The 3.5" E32R35T is 55.5 × 101.5 mm, 5.8 mm deep at the screen (LCDwiki), more behind for the ESP32 module and plugs, so measure before buying a box.
+- Push button, wanted 2026-11-24. Long press turns the unit on and off, short press scans when on. Needs a soft power circuit (or deep sleep with the boost converter switched off) and a free GPIO, still to design.
 
 ## How a scan works
 
@@ -207,6 +209,15 @@ Trying it on the phone (Link 4b and 5 together).
 4. Draw on the board and Save. It should be sent again and replace the drawing. Edit the section in SexyTopo, then draw and save on the board again, and SexyTopo should ask which to keep.
 5. Rename and delete a station in SexyTopo, and the board's picker and scan should follow.
 6. If anything goes wrong, a serial monitor on USB (pio device monitor -b 460800) shows the LINK lines, and LINK prints the state.
+
+Tried on the phone 2026-11-24 (TCL 50 Pro NXTPAPER, SexyTopo β). Found, connected, scan sent and acknowledged, drawing sent, rename followed, deleting a station left the scan with no station. One "Lidar scan failed" on the board, then working, probably a lead or power. Android froze SexyTopo two minutes after it went to the background, which drops the link.
+
+Link 6, from that try (user asked 2026-11-24, written the same day).
+
+1. Station picker. Tapping a station only picks it (filled), No station likewise, and Accept and Cancel take the place of the scan screen buttons, so orientation and facing can be set after the station. Accept with nothing changed just closes.
+2. Where sections go. Horizontal sections always go on the elevation, vertical ones on the plan unless the new setting (Instruments, "Put the scanner's vertical sections on", Plan or Elevation, default Plan) says the elevation. A section turned horizontal moves off the plan. Sections already placed by hand stay where they are.
+3. A scan moved to another station on the board left its old section in SexyTopo, so it appeared twice. Now the old section is removed too, unless edited in SexyTopo since it came from the board.
+4. Undoing or deleting a section in SexyTopo. A scan counts as on its station only while the station has a section. StationWatcher sends scan_station (docs/LINK.md) when that changes, so the board takes the scan off its station, and a redo puts it back. Sketch undo and redo now broadcast a survey update so the link hears of them. The survey message on connecting leaves such scans out, and the board clears acknowledged scans it leaves out.
 
 ## Software
 

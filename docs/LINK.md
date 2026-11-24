@@ -69,7 +69,7 @@ On connecting, and again whenever another survey is opened.
 ```
 
 - stations are oldest first. XScan offers the newest first.
-- scans are every scan SexyTopo holds, with its station's current name. XScan uses them to bring its own stations up to date, so a rename made while apart reaches it too.
+- scans are every scan SexyTopo holds on a station, with its station's current name. A scan counts as on its station only while the station has a cross-section, so one whose section was undone or deleted is left out. XScan uses them to bring its own stations up to date, so a rename made while apart reaches it too. When the survey name is the one XScan already has, an acknowledged scan left out loses its station on XScan. Scans waiting to be sent, or from another survey, are left alone.
 
 ### station_added, station_renamed, station_deleted (SexyTopo to XScan)
 
@@ -80,6 +80,17 @@ On connecting, and again whenever another survey is opened.
 ```
 
 XScan changes the station on any scan that has it. A deleted station's scan loses its station and stays on XScan.
+
+### scan_station (SexyTopo to XScan)
+
+A scan SexyTopo holds has moved to another station, or off its station when its cross-section is undone or deleted (no station given). Sent after the station messages, whenever the survey changes.
+
+```json
+{"type":"scan_station","scan":"b0004-001","station":"6"}
+{"type":"scan_station","scan":"b0004-001"}
+```
+
+With no station, XScan takes the scan off its station, as for a deleted station. With a station, XScan puts the scan there as acknowledged, taking the station from any other scan. A scan already at that station is left as it is, so a newer drawing waiting to be sent still goes. Added in firmware 0.6 within protocol 1, as older firmware ignores types it doesn't know.
 
 ### section (XScan to SexyTopo)
 

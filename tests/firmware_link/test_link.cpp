@@ -120,6 +120,23 @@ void testModel() {
   m.setSurvey("Trip1", {"1", "3x"}, {{"b1", "3x"}, {"b9", "1"}});
   check(m.find("b1")->station == "3x" && !m.find("b9"), "survey brings station names up to date");
 
+  m.reply("b1", 0, 0, "ok", "");
+  m.scanStation("b1", "");
+  check(m.find("b1")->station.empty() && m.find("b1")->state == ScanState::NEW, "undone in SexyTopo clears the station");
+  m.accept("b2", "1", false, false, displaced);
+  m.scanStation("b1", "1");
+  check(m.find("b1")->station == "1" && m.find("b1")->state == ScanState::ACKNOWLEDGED && m.find("b2")->station.empty(),
+        "redone in SexyTopo puts it back, taking the station from another scan");
+  m.accept("b2", "3x", false, false, displaced);
+  m.scanStation("b2", "3x");
+  check(m.find("b2")->state == ScanState::ACCEPTED, "same station changes nothing, so it is still sent");
+  m.setSurvey("Trip1", {"1", "3x"}, {});
+  check(m.find("b1")->station.empty() && m.find("b2")->station == "3x",
+        "survey without an acknowledged scan clears it, not one waiting to be sent");
+  m.scanStation("b1", "1");
+  m.setSurvey("Trip2", {"1"}, {});
+  check(m.find("b1")->station == "1", "another survey leaves stations alone");
+
   JsonDocument doc;
   m.toJson(doc);
   LinkModel back;

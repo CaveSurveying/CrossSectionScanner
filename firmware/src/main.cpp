@@ -1,6 +1,7 @@
 // CrossSectionScanner, stand-alone unit: SCAN takes a lidar scan, shows it and saves it in flash.
 // ‹ and › step through saved scans, Stn gives the scan shown its station from SexyTopo's list (with
-// vertical or horizontal and facing on or back), so it is sent to SexyTopo over Bluetooth (link.h),
+// vertical or horizontal and facing on or back, then Accept), so it is sent to SexyTopo over
+// Bluetooth (link.h),
 // and Draw opens the drawing screen for the scan shown, where
 // Type picks the kind of line (as SexyTopo's), Save keeps the drawing and Cancel puts it back as
 // it was.
@@ -54,6 +55,8 @@ constexpr int STN_X = 164, STN_W = 32;
 constexpr int DRAW_X = 200, DRAW_W = 36;
 // Station picker over the view, two columns, stations newest first in the first rows
 constexpr int STN_COLS = 2, STN_ROWS = 4, STN_CELL_W = VIEW / STN_COLS, STN_CELL_H = VIEW / (STN_ROWS + 2);
+// Station picker buttons in place of the scan screen's
+constexpr int PICK_CANCEL_X = 4, ACCEPT_X = 124, PICK_BTN_W = 112;
 // Drawing screen buttons
 constexpr int UNDO_X = 2, CLEAR_X = 45, TYPE_X = 88, CANCEL_X = 157, SAVE_X = 200;
 constexpr int EDIT_W = 40, TYPE_W = 66;
@@ -83,7 +86,7 @@ int sketchRevision = 0;  // of the drawing shown, 0 if it has never been saved
 bool choosingStation = false;  // station picker open on the scan screen
 int stationPage = 0;           // of the station picker, 0 for the newest
 bool pickHorizontal = false, pickBack = false;  // for the station picked
-String pendingStation;  // picked once, already with another scan, so a second tap replaces it
+String pickedStation;  // to be given on Accept, empty for no station
 
 bool inside(int x, int y, int bx, int bw) { return x >= bx && x < bx + bw && y >= BTN_Y && y < BTN_Y + BTN_H; }
 
@@ -111,14 +114,16 @@ void drawButtons() {
     drawButton(TYPE_X, TYPE_W, true, picking ? TFT_ORANGE : TFT_PURPLE, LineTypeInfo::of(lineType).label);
     drawButton(CANCEL_X, EDIT_W, !picking, TFT_NAVY, "Cancel");
     drawButton(SAVE_X, EDIT_W, !picking, TFT_DARKGREEN, "Save");
-  } else {  // only Stn while choosing a station
-    const bool free = !choosingStation;
-    drawButton(PREV_X, STEP_W, free && shown > 0, TFT_NAVY, "<");
-    drawButton(SCAN_X, SCAN_W, free && lidarFound && !scanning, TFT_DARKGREEN,
+  } else if (choosingStation) {
+    drawButton(PICK_CANCEL_X, PICK_BTN_W, true, TFT_NAVY, "Cancel");
+    drawButton(ACCEPT_X, PICK_BTN_W, true, TFT_DARKGREEN, "Accept");
+  } else {
+    drawButton(PREV_X, STEP_W, shown > 0, TFT_NAVY, "<");
+    drawButton(SCAN_X, SCAN_W, lidarFound && !scanning, TFT_DARKGREEN,
                scanning ? "Scanning" : lidarFound ? "SCAN" : "No lidar");
-    drawButton(NEXT_X, STEP_W, free && shown < store.count() - 1, TFT_NAVY, ">");
-    drawButton(STN_X, STN_W, shown >= 0, choosingStation ? TFT_ORANGE : TFT_PURPLE, "Stn");
-    drawButton(DRAW_X, DRAW_W, free && scanView.count() > 0, TFT_PURPLE, "Draw");
+    drawButton(NEXT_X, STEP_W, shown < store.count() - 1, TFT_NAVY, ">");
+    drawButton(STN_X, STN_W, shown >= 0, TFT_PURPLE, "Stn");
+    drawButton(DRAW_X, DRAW_W, scanView.count() > 0, TFT_PURPLE, "Draw");
   }
   lcd.setTextDatum(top_left);
 }
@@ -205,23 +210,27 @@ void pressPicker(int x, int y) {
   showPicker(false);
 }
 
-// Stations newest first, a page at a time, then the orientation and facing toggles, Older and No station
+// The shown scan's station, empty if none
+String currentStation() {
+  const ScanLink *l = shown >= 0 ? sexytopo.model().find(store.name(shown).c_str()) : nullptr;
+  return l ? l->station.c_str() : "";
+}
+
+// Stations newest first, a page at a time, then the orientation and facing toggles, Older and No station.
+// The one picked is filled, others with a scan are outlined in orange.
 void drawStationPicker() {
   const std::vector<std::string> &stations = sexytopo.model().stations();
   lcd.fillRect(0, 0, VIEW, VIEW, TFT_BLACK);
   lcd.setTextColor(TFT_WHITE);
   lcd.setTextDatum(middle_center);
   lcd.setTextSize(2);
-  const String current = shown >= 0 ? sexytopo.model().find(store.name(shown).c_str())
-                                          ? sexytopo.model().find(store.name(shown).c_str())->station.c_str() : ""
-                                    : "";
   for (int i = 0; i < STN_COLS * STN_ROWS; i++) {
     const int n = stations.size() - 1 - (stationPage * STN_COLS * STN_ROWS + i);
     if (n < 0) break;
     const int x = i % STN_COLS * STN_CELL_W, y = i / STN_COLS * STN_CELL_H;
     const String name = stations[n].c_str();
     const bool taken = !sexytopo.model().scanAt(stations[n]).empty();
-    if (name == current) lcd.fillRoundRect(x + 2, y + 2, STN_CELL_W - 4, STN_CELL_H - 4, 6, TFT_NAVY);
+    if (name == pickedStation) lcd.fillRoundRect(x + 2, y + 2, STN_CELL_W - 4, STN_CELL_H - 4, 6, TFT_NAVY);
     else lcd.drawRoundRect(x + 2, y + 2, STN_CELL_W - 4, STN_CELL_H - 4, 6, taken ? TFT_ORANGE : TFT_DARKGREY);
     lcd.drawString(name, x + STN_CELL_W / 2, y + STN_CELL_H / 2);
   }
@@ -235,7 +244,9 @@ void drawStationPicker() {
                           "Older", "No station"};
   for (int i = 0; i < 4; i++) {
     const int x = i % 2 * STN_CELL_W, y = (STN_ROWS + i / 2) * STN_CELL_H;
-    lcd.fillRoundRect(x + 2, y + 2, STN_CELL_W - 4, STN_CELL_H - 4, 6, i < 2 ? TFT_PURPLE : TFT_DARKGREY);
+    const bool noneUsed = i == 3 && pickedStation.isEmpty();
+    lcd.fillRoundRect(x + 2, y + 2, STN_CELL_W - 4, STN_CELL_H - 4, 6,
+                      i < 2 ? TFT_PURPLE : noneUsed ? TFT_NAVY : TFT_DARKGREY);
     lcd.drawString(labels[i], x + STN_CELL_W / 2, y + STN_CELL_H / 2);
   }
   lcd.setTextDatum(top_left);
@@ -243,14 +254,14 @@ void drawStationPicker() {
 
 void showStationPicker(bool open) {
   choosingStation = open;
-  pendingStation = "";
+  pickedStation = currentStation();
   if (open) {
     const ScanLink *l = sexytopo.model().find(store.name(shown).c_str());
     pickHorizontal = l && l->horizontal;
     pickBack = l && l->back;
     stationPage = 0;
     drawStationPicker();
-    showMessage("Pick the scan's station, newest first");
+    showMessage("Pick the scan's station, then Accept");
   } else {
     drawView();
     showLinkState();
@@ -273,23 +284,39 @@ void pressStationPicker(int x, int y) {
       stationPage = pages ? (stationPage + 1) % pages : 0;
       drawStationPicker();
     } else {
-      sexytopo.clearStation(scan);
-      showStationPicker(false);
+      pickedStation = "";
+      drawStationPicker();
+      showMessage("No station, Accept takes it off");
     }
     return;
   }
   const std::vector<std::string> &stations = sexytopo.model().stations();
   const int n = stations.size() - 1 - (stationPage * STN_COLS * STN_ROWS + row * STN_COLS + col);
   if (n < 0) return;
-  const String station = stations[n].c_str();
+  pickedStation = stations[n].c_str();
+  drawStationPicker();
   const String other = sexytopo.model().scanAt(stations[n]).c_str();
-  if (other.length() && other != scan && pendingStation != station) {
-    pendingStation = station;
-    showMessage("Stn " + station + " has " + other + ", tap again to replace");
+  if (other.length() && other != scan) showMessage("Stn " + pickedStation + " has " + other + ", Accept replaces it");
+  else showMessage("Stn " + pickedStation + ", then Accept");
+}
+
+// Gives the shown scan the station picked, if anything has changed
+void acceptStation() {
+  const String scan = store.name(shown);
+  const ScanLink *l = sexytopo.model().find(scan.c_str());
+  const bool same = pickedStation == currentStation() &&
+                    (pickedStation.isEmpty() || (l && l->horizontal == pickHorizontal && l->back == pickBack));
+  if (same) {
+    showStationPicker(false);
+    return;
+  }
+  if (pickedStation.isEmpty()) {
+    sexytopo.clearStation(scan);
+    showStationPicker(false);
     return;
   }
   String displaced;
-  sexytopo.accept(scan, station, pickHorizontal, pickBack, displaced);
+  sexytopo.accept(scan, pickedStation, pickHorizontal, pickBack, displaced);
   showStationPicker(false);
   if (displaced.length()) showMessage(sexytopo.describe(scan) + ", " + displaced + " lost it");
 }
@@ -515,7 +542,8 @@ void readTouch() {
     else if (pressed) pressDrawingButtons(x, y);
   } else if (choosingStation) {
     if (pressed && scanView.inView(x, y)) pressStationPicker(x, y);
-    else if (pressed && inside(x, y, STN_X, STN_W)) showStationPicker(false);
+    else if (pressed && inside(x, y, PICK_CANCEL_X, PICK_BTN_W)) showStationPicker(false);
+    else if (pressed && inside(x, y, ACCEPT_X, PICK_BTN_W)) acceptStation();
   } else if (drawing) {
     penOnDrawing(touched, x, y);
     if (pressed && !scanView.inView(x, y)) pressDrawingButtons(x, y);

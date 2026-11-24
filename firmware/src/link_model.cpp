@@ -10,6 +10,9 @@ const char *LinkModel::stateName(ScanState state) { return STATE_NAMES[(int)stat
 
 void LinkModel::setSurvey(const std::string &name, const std::vector<std::string> &stations,
                           const std::map<std::string, std::string> &scanStations) {
+  if (name == surveyName)
+    for (auto &s : scans)
+      if (s.second.state == ScanState::ACKNOWLEDGED && !scanStations.count(s.first)) clearStation(s.first);
   surveyName = name;
   stationList = stations;
   // SexyTopo's names win, so a rename made while apart reaches here too
@@ -33,6 +36,20 @@ void LinkModel::stationDeleted(const std::string &name) {
   stationList.erase(std::remove(stationList.begin(), stationList.end(), name), stationList.end());
   for (auto &s : scans)
     if (s.second.station == name) clearStation(s.first);
+}
+
+void LinkModel::scanStation(const std::string &scan, const std::string &station) {
+  auto s = scans.find(scan);
+  if (s == scans.end() || s->second.station == station) return;
+  if (station.empty()) {
+    clearStation(scan);
+    return;
+  }
+  const std::string other = scanAt(station);
+  if (!other.empty()) clearStation(other);
+  s->second.station = station;
+  s->second.state = ScanState::ACKNOWLEDGED;
+  s->second.reason.clear();
 }
 
 std::string LinkModel::scanAt(const std::string &station) const {

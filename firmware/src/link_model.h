@@ -24,12 +24,15 @@ class LinkModel {
  public:
   static const char *stateName(ScanState state);
 
-  // A survey from SexyTopo, its stations oldest first and the station of each scan it holds
+  // A survey from SexyTopo, its stations oldest first and the station of each scan it holds.
+  // Within the same survey, an acknowledged scan SexyTopo no longer holds loses its station.
   void setSurvey(const std::string &name, const std::vector<std::string> &stations,
                  const std::map<std::string, std::string> &scanStations);
   void stationAdded(const std::string &name);
   void stationRenamed(const std::string &from, const std::string &to);
   void stationDeleted(const std::string &name);  // its scan loses its station and is kept
+  // SexyTopo has the scan at this station now, or at none if empty (its section undone)
+  void scanStation(const std::string &scan, const std::string &station);
 
   // The scan at a station, empty if none
   std::string scanAt(const std::string &station) const;

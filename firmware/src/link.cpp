@@ -87,6 +87,9 @@ void Link::handle(JsonDocument &message) {
   } else if (type == "station_deleted") {
     state.stationDeleted(message["name"] | "");
     save();
+  } else if (type == "scan_station") {
+    state.scanStation(message["scan"] | "", message["station"] | "");
+    save();
   } else if (type == "reply") {
     const std::string scan = message["scan"] | "";
     if (scan.empty()) {  // our frame was unreadable, so send it again

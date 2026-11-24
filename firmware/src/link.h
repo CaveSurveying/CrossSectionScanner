@@ -9,7 +9,7 @@
 
 class Link {
  public:
-  static constexpr const char *FIRMWARE = "0.5";
+  static constexpr const char *FIRMWARE = "0.6";
 
   void begin(ScanStore &store);
   // Call from loop(), true if what the screen shows of the link has changed
