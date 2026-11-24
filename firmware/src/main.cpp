@@ -4,7 +4,8 @@
 // Bluetooth (link.h),
 // and Draw opens the drawing screen for the scan shown, where
 // Type picks the kind of line (as SexyTopo's), Save keeps the drawing and Cancel puts it back as
-// it was.
+// it was. Drawings edited in SexyTopo come back and are shown, with its text, symbols and areas,
+// though only lines can be edited here.
 // A computer on the USB port can watch, ask for scans and fetch saved ones for debugging
 // (tools/board_link.py). Touch calibration runs if the screen is held at power-on.
 //
@@ -83,6 +84,7 @@ bool picking = false;  // line type picker open on the drawing screen
 LineType lineType = LineType::SKETCH;  // for the next line drawn
 int shown = -1;        // saved scan on the screen, -1 for none
 int sketchRevision = 0;  // of the drawing shown, 0 if it has never been saved
+bool reloadShown = false;  // SexyTopo has replaced the drawing shown
 bool choosingStation = false;  // station picker open on the scan screen
 int stationPage = 0;           // of the station picker, 0 for the newest
 bool pickHorizontal = false, pickBack = false;  // for the station picked
@@ -158,10 +160,31 @@ void drawPath(const Sketch::Path &path) {
   line_style::draw(lcd, points, path.type, LINE_COLOUR);
 }
 
+// What SexyTopo drew that can't be edited here, areas as outlines, symbols and text as text
+void drawExtras() {
+  const Sketch::Extras &extras = sketch.extras();
+  for (const std::vector<Coord> &outline : extras.outlines)
+    for (size_t i = 0; i < outline.size(); i++) {
+      int x0, y0, x1, y1;
+      scanView.toScreen(outline[i], x0, y0);
+      scanView.toScreen(outline[(i + 1) % outline.size()], x1, y1);
+      lcd.drawLine(x0, y0, x1, y1, TFT_DARKCYAN);
+    }
+  lcd.setTextSize(1);
+  lcd.setTextColor(TFT_CYAN);
+  for (const Sketch::Extras::Mark &mark : extras.marks) {
+    int x, y;
+    scanView.toScreen(mark.at, x, y);
+    if (mark.symbol) lcd.drawCircle(x, y, 3, TFT_CYAN);
+    lcd.drawString(mark.text.c_str(), mark.symbol ? x + 5 : x, y - 4);
+  }
+}
+
 // Scan with its sketch over it, in the view
 void drawView() {
   scanView.draw(lcd, VIEW);
   lcd.setClipRect(1, 1, VIEW - 2, VIEW - 2);
+  drawExtras();
   for (const Sketch::Path &p : sketch.paths()) drawPath(p);
   lcd.clearClipRect();
 }
@@ -343,6 +366,7 @@ void cancelDrawing() {
   drawButtons();
   if (changed) showMessage("Drawing not changed");
   else showLidarState();
+  if (shown >= 0) sexytopo.drawingClosed(store.name(shown), false);
 }
 
 // Save the drawing if it changed, undo goes back only to here
@@ -352,6 +376,7 @@ void saveDrawing() {
   drawButtons();
   if (!sketch.changed()) {
     showLidarState();
+    if (shown >= 0) sexytopo.drawingClosed(store.name(shown), false);
     return;
   }
   sketch.forgetHistory();
@@ -360,17 +385,20 @@ void saveDrawing() {
     return;
   }
   const String &name = store.name(shown);
-  const int overwritten = storeOk ? store.saveSketch(name, sketch, sketchRevision + 1) : -1;
+  const int revision = LinkModel::nextRevision(sketchRevision);
+  const int overwritten = storeOk ? store.saveSketch(name, sketch, revision) : -1;
   if (overwritten < 0) {
     Serial.printf("SKETCH failed %s\n", name.c_str());
     showMessage("Drawing not saved, flash error");
+    sexytopo.drawingClosed(name, false);
     return;
   }
-  sketchRevision++;
+  sketchRevision = revision;
   Serial.printf("SKETCH SAVED %s %d %d\n", name.c_str(), sketchRevision, overwritten);
   sendSketch(name);
   sexytopo.scansChanged();
   sexytopo.drawingSaved(name);
+  sexytopo.drawingClosed(name, true);
   if (overwritten) {
     showSaved(shown - overwritten);  // the older scans before it were overwritten
     showMessage(String("Drawing saved, flash full so ") + overwritten + " oldest overwritten");
@@ -558,7 +586,7 @@ void setup() {
   Serial.begin(BAUD);
   lcd.start();
   storeOk = store.begin();
-  sexytopo.begin(store);
+  sexytopo.begin(store, [](const String &scan) { return drawing && shown >= 0 && store.name(shown) == scan; });
   lidar.begin();
   for (int i = 0; i < 10 && !lidarFound; i++) {  // the lidar may still be starting up
     lidarFound = lidar.readInfo(lidarInfo);
@@ -585,5 +613,12 @@ void loop() {
   readSerial();
   readTouch();
   if (sexytopo.loop() && !drawing && !choosingStation) showLinkState();
+  String updated;
+  if (sexytopo.takeUpdated(updated) && shown >= 0 && store.name(shown) == updated) reloadShown = true;
+  if (reloadShown && !drawing && !choosingStation) {
+    reloadShown = false;
+    showSaved(shown);
+    showMessage("Drawing from SexyTopo");
+  }
   delay(10);
 }

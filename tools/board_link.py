@@ -21,6 +21,7 @@ go in Trip1.xscan.jsonl there over adb, one line per station, replacing any line
 """
 import argparse
 import json
+import math
 import shutil
 import subprocess
 import sys
@@ -128,16 +129,16 @@ JSONL_FORMAT = "XScan scan 1"
 JSONL_PATH = SCANS_DIR / "xscan.jsonl"
 
 
-def number(value):
-    """A whole number as an int, so the JSONL has 1234 rather than 1234.0."""
-    return int(value) if value == int(value) else value
+def whole_mm(value):
+    """A distance to the nearest whole mm, halves up as the board rounds, finer is pointless."""
+    return math.floor(value + 0.5)
 
 
 def jsonl_line(record, station=None):
     """A board scan record as one line of the exchange format. Anything not known is left out."""
     if len(record["revolutions"]) != 1:
         raise ValueError(f"{record['board_name']}: {len(record['revolutions'])} turns, one expected")
-    points = [[p["angle_deg"], number(p["distance_mm"]), p["quality"]]
+    points = [[p["angle_deg"], whole_mm(p["distance_mm"]), p["quality"]]
               for p in record["revolutions"][0] if p["distance_mm"]]
     line = {"format": JSONL_FORMAT, "scan": record["board_name"]}
     if station is not None:

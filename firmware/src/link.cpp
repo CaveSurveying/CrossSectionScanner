@@ -5,16 +5,18 @@
 
 #include "exchange.h"
 #include "link_ble.h"
+#include "sketch_file.h"
 
 namespace {
 const char *PATH = "/link.json";
-constexpr int PROTOCOL = 1;
+constexpr int PROTOCOL = 2;
 constexpr unsigned long PART_FRAME_MS = 10000;  // a part frame is dropped when nothing more comes
 constexpr unsigned long REPLY_MS = 30000;       // a section with no reply by then is sent again
 }  // namespace
 
-void Link::begin(ScanStore &scans) {
+void Link::begin(ScanStore &scans, bool (*drawingOpen)(const String &scan)) {
   store = &scans;
+  beingDrawn = drawingOpen;
   File f = LittleFS.open(PATH, "r");
   if (f) {
     JsonDocument doc;
@@ -31,6 +33,7 @@ bool Link::loop() {
   const int change = link_ble::takeConnectionChange();
   if (change) {
     reader.clear();
+    held.clear();  // SexyTopo sends them again on the next connection
     surveyed = false;
     inFlight.clear();  // sent again on the next connection, as it had no reply
     changed = true;
@@ -90,6 +93,8 @@ void Link::handle(JsonDocument &message) {
   } else if (type == "scan_station") {
     state.scanStation(message["scan"] | "", message["station"] | "");
     save();
+  } else if (type == "drawing") {
+    onDrawing(message);
   } else if (type == "reply") {
     const std::string scan = message["scan"] | "";
     if (scan.empty()) {  // our frame was unreadable, so send it again
@@ -108,6 +113,80 @@ void Link::handle(JsonDocument &message) {
     }
   }
   // anything else is from a later protocol, so ignored
+}
+
+// A drawing edited in SexyTopo, taken if ours is the one it was based on
+void Link::onDrawing(JsonDocument &message) {
+  const std::string scan = message["scan"] | "";
+  const int revision = message["revision"] | 0;
+  const bool open = beingDrawn && beingDrawn(scan.c_str());
+  const DrawingAnswer answer = LinkModel::answerDrawing(isSaved(scan), open, revisionOf(scan.c_str()), revision,
+                                                        message["based_on"] | 0);
+  Serial.printf("LINK drawing %s %d answer %d\n", scan.c_str(), revision, (int)answer);
+  if (answer == DrawingAnswer::NO_SCAN) {
+    replyDrawing(scan, revision, "error", "no_scan");
+  } else if (answer == DrawingAnswer::HOLD) {
+    held[scan].clear();
+    serializeJson(message, held[scan]);
+  } else if (answer == DrawingAnswer::CLASH) {
+    replyDrawing(scan, revision, "conflict");
+    state.drawingSaved(scan);  // ours goes to SexyTopo, which asks which to keep
+    save();
+    sendNext();
+  } else if (answer == DrawingAnswer::ALREADY) {
+    state.drawingAgreed(scan, revision);
+    save();
+    replyDrawing(scan, revision, "ok");
+  } else {
+    Sketch drawing;
+    int ignored;
+    if (!sketch_file::fromJson(message["sketch"], drawing, ignored)) {
+      replyDrawing(scan, revision, "error", "bad_sketch");
+    } else if (store->saveSketch(scan.c_str(), drawing, revision) < 0) {
+      replyDrawing(scan, revision, "error", "flash");
+    } else {
+      state.drawingAgreed(scan, revision);
+      save();
+      updated = scan;
+      replyDrawing(scan, revision, "ok");
+    }
+  }
+}
+
+void Link::replyDrawing(const std::string &scan, int revision, const char *result, const char *reason) {
+  JsonDocument reply;
+  reply["type"] = "drawing_reply";
+  reply["scan"] = scan;
+  reply["revision"] = revision;
+  reply["result"] = result;
+  if (reason) reply["reason"] = reason;
+  std::string json;
+  serializeJson(reply, json);
+  sendMessage(json);
+}
+
+bool Link::isSaved(const std::string &scan) const {
+  for (int i = 0; i < store->count(); i++)
+    if (store->name(i) == scan.c_str()) return true;
+  return false;
+}
+
+void Link::drawingClosed(const String &scan, bool saved) {
+  auto h = held.find(scan.c_str());
+  if (h == held.end()) return;
+  JsonDocument message;
+  const bool readable = !deserializeJson(message, h->second);
+  held.erase(h);
+  if (!readable) return;
+  if (saved) replyDrawing(scan.c_str(), message["revision"] | 0, "conflict");  // ours is on its way
+  else onDrawing(message);
+}
+
+bool Link::takeUpdated(String &scan) {
+  if (updated.empty()) return false;
+  scan = updated.c_str();
+  updated.clear();
+  return true;
 }
 
 void Link::sendMessage(const std::string &json) { link_ble::send(link_frame::frame(json)); }

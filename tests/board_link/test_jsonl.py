@@ -25,17 +25,17 @@ def point(deg, mm, quality):
 
 LIDAR = {"model": 65, "firmware": "1.02", "hardware": 18, "serial": "53AB"}
 FORMAT_2 = {"format": "CrossSectionScanner raw scan 2", "time": None, "source": "board", "lidar": LIDAR,
-            "revolutions": [[point(0.5, 1234.0, 47), point(2.1, 1240.25, 46)]], "samples": [5],
+            "revolutions": [[point(0.5, 1234.0, 47), point(2.1, 1240.5, 46)]], "samples": [5],
             "received": "2026-11-22T19:35:32+00:00", "board_name": "b0007-003",
             "start_up": 7, "scan": 3, "ms_since_start_up": 12345}
-FORMAT_1 = dict(FORMAT_2, revolutions=[[point(0.5, 1234.0, 47), point(1.3, 0.0, 0), point(2.1, 1240.25, 46)]])
+FORMAT_1 = dict(FORMAT_2, revolutions=[[point(0.5, 1234.0, 47), point(1.3, 0.0, 0), point(2.1, 1240.5, 46)]])
 del FORMAT_1["samples"]
 NO_LIDAR = dict(FORMAT_2, lidar=None)
 TWO_TURNS = dict(FORMAT_2, revolutions=FORMAT_2["revolutions"] * 2)
 
 expected = {"format": "XScan scan 1", "scan": "b0007-003",
             "board": {"start_up": 7, "scan": 3, "ms_since_start_up": 12345}, "lidar": LIDAR,
-            "samples": 5, "returns": 2, "points": [[0.5, 1234, 47], [2.1, 1240.25, 46]]}
+            "samples": 5, "returns": 2, "points": [[0.5, 1234, 47], [2.1, 1241, 46]]}
 
 for record, want, what in (
         (FORMAT_2, expected, "FORMAT 2 scan"),
@@ -44,7 +44,7 @@ for record, want, what in (
     line = board_link.jsonl_line(record)
     check(json.loads(line) == want and "\n" not in line, what)
 
-check(json.dumps(board_link.jsonl_line(FORMAT_2)).count("1234.0") == 0, "whole millimetres written without .0")
+check(json.dumps(board_link.jsonl_line(FORMAT_2)).count("1234.0") == 0, "whole millimetres written without .0, halves up")
 check("time" not in json.loads(board_link.jsonl_line(FORMAT_2)), "null time left out")
 check(json.loads(board_link.jsonl_line(dict(FORMAT_2, time="2026-11-23T10:00:00+00:00")))["time"]
       == "2026-11-23T10:00:00+00:00", "known time kept")

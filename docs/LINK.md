@@ -56,8 +56,8 @@ Every message has a type. A message with a type the receiver doesn't know is ign
 ### hello (both ways)
 
 ```json
-{"type":"hello","protocol":1,"app":"SexyTopo 1.15.0"}
-{"type":"hello","protocol":1,"firmware":"0.4","board":"A1B2C3"}
+{"type":"hello","protocol":2,"app":"SexyTopo 1.15.0"}
+{"type":"hello","protocol":2,"firmware":"0.7","board":"A1B2C3"}
 ```
 
 ### survey (SexyTopo to XScan)
@@ -90,7 +90,7 @@ A scan SexyTopo holds has moved to another station, or off its station when its 
 {"type":"scan_station","scan":"b0004-001"}
 ```
 
-With no station, XScan takes the scan off its station, as for a deleted station. With a station, XScan puts the scan there as acknowledged, taking the station from any other scan. A scan already at that station is left as it is, so a newer drawing waiting to be sent still goes. Added in firmware 0.6 within protocol 1, as older firmware ignores types it doesn't know.
+With no station, XScan takes the scan off its station, as for a deleted station. With a station, XScan puts the scan there as acknowledged, taking the station from any other scan. A scan already at that station is left as it is, so a newer drawing waiting to be sent still goes. Added in firmware 0.6.
 
 ### section (XScan to SexyTopo)
 
@@ -102,7 +102,7 @@ A scan accepted with a station, and its drawing.
 
 - scan is one line of the exchange format (PLAN.md, Exchange format), with station, orientation (vertical or horizontal) and facing (on or back) always given.
 - sketch is the drawing as saved on the board (firmware/src/sketch_file.cpp), left out if there isn't one. Its revision is the section's revision, 0 with no drawing.
-- based_on is the revision SexyTopo last acknowledged for this scan, 0 if none. SexyTopo replaces its drawing only if it hasn't been edited there since based_on.
+- based_on is the agreed revision for this scan, the last one SexyTopo said ok to or XScan took from SexyTopo, 0 if none. SexyTopo replaces its drawing only if it hasn't been edited there since based_on.
 
 ### reply (SexyTopo to XScan)
 
@@ -116,6 +116,38 @@ One for each section.
 
 - ok, SexyTopo has the scan and drawing at this revision. A section it already has (same scan and revision) gets ok again and changes nothing.
 - error, not taken. reason is one of bad_checksum, unknown_format, no_station, bad_points, bad_sketch. scan and revision are left out when the frame couldn't be read.
-- conflict, the drawing was edited in SexyTopo since based_on. SexyTopo keeps its own and asks its user. If they choose the scanner's, it sends ok for this revision, otherwise the scan stays as conflict on XScan.
+- conflict, the drawing was edited in SexyTopo since based_on. SexyTopo keeps its own and asks its user. If they choose the scanner's, it sends ok for this revision. If they keep SexyTopo's, SexyTopo sends its drawing based on this revision (drawing below), now or on the next connection.
 
 XScan shows each scan as new, accepted, sent, acknowledged (after ok), error or conflict. A sent scan with no reply is sent again on the next connection.
+
+### Drawing revisions (protocol 2)
+
+Either end can edit a scan's drawing, and each sends its whole drawing when it finishes editing (XScan on Save, SexyTopo when its cross-section editor is left). Drawing at both ends at once is unlikely, so a clash is simply asked about, in SexyTopo.
+
+- The agreed revision is the last one both ends have. Each drawing sent says the agreed revision it was based on, and the other end takes it only if its own drawing hasn't changed since.
+- XScan's revisions are odd and SexyTopo's even, each the next above the one it starts from, so the two never share a number.
+- SexyTopo always does the asking. XScan shows conflict until it is settled.
+
+### drawing (SexyTopo to XScan)
+
+A drawing edited in SexyTopo, sent when its cross-section editor is left and on each connection while it differs from the agreed one. Not sent while SexyTopo's user hasn't settled a conflict for that scan.
+
+```json
+{"type":"drawing","scan":"b0004-001","revision":4,"based_on":3,"sketch":{"format":"XScan sketch 1","scan":"b0004-001","revision":4,"sketch":{"paths":[],"areas":[],"labels":[],"symbols":[]}}}
+```
+
+- based_on is the agreed revision, or after the user keeps SexyTopo's drawing in a conflict, the scanner's revision that clashed.
+- sketch is SexyTopo's whole drawing. XScan keeps colours, areas, labels and symbols as they came and writes them back, shows them, and lets only lines be edited.
+
+### drawing_reply (XScan to SexyTopo)
+
+```json
+{"type":"drawing_reply","scan":"b0004-001","revision":4,"result":"ok"}
+{"type":"drawing_reply","scan":"b0004-001","revision":4,"result":"conflict"}
+{"type":"drawing_reply","scan":"b0004-001","revision":4,"result":"error","reason":"no_scan"}
+```
+
+- ok, XScan has the drawing at this revision, which is then agreed at both ends. A drawing it already has gets ok again, so a lost reply does no harm.
+- conflict, XScan's drawing changed since based_on. XScan sends its own as a section, and SexyTopo asks its user then.
+- error, not taken. reason is no_scan (the scan isn't saved on XScan), bad_sketch or flash. SexyTopo stops sending that drawing.
+- If XScan's drawing screen is open on that scan, the reply waits. Cancel takes SexyTopo's drawing, Save sends XScan's, which is a conflict.

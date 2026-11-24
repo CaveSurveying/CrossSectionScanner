@@ -11,6 +11,15 @@
 
 enum class ScanState { NEW, ACCEPTED, SENT, ACKNOWLEDGED, ERROR, CONFLICT };
 
+// What to do with a drawing SexyTopo sends (docs/LINK.md, drawing)
+enum class DrawingAnswer {
+  TAKE,     // the drawing here is the one SexyTopo's was based on
+  ALREADY,  // taken before, its reply lost
+  HOLD,     // being drawn here, so wait for Save or Cancel
+  CLASH,    // changed here since, so send ours and SexyTopo asks
+  NO_SCAN   // the scan isn't saved here
+};
+
 struct ScanLink {
   std::string station;  // empty for none
   bool horizontal = false;
@@ -23,6 +32,10 @@ struct ScanLink {
 class LinkModel {
  public:
   static const char *stateName(ScanState state);
+  // current is the revision of the drawing saved here, 0 for none
+  static DrawingAnswer answerDrawing(bool saved, bool beingDrawn, int current, int revision, int basedOn);
+  // Drawing revisions made here are odd and SexyTopo's even, so the two never share a number
+  static int nextRevision(int current) { return (current + 1) | 1; }
 
   // A survey from SexyTopo, its stations oldest first and the station of each scan it holds.
   // Within the same survey, an acknowledged scan SexyTopo no longer holds loses its station.
@@ -41,6 +54,8 @@ class LinkModel {
   void clearStation(const std::string &scan);
   // A new revision of the scan's drawing, to be sent again if it has a station
   void drawingSaved(const std::string &scan);
+  // SexyTopo's drawing taken, so that revision is agreed
+  void drawingAgreed(const std::string &scan, int revision);
   void forget(const std::string &scan);  // the scan was deleted
   void keepOnly(const std::vector<std::string> &saved);  // forget scans no longer saved
 

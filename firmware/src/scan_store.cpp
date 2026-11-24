@@ -66,7 +66,7 @@ String ScanStore::record(const Lidar &lidar, const Lidar::Info &info, String &na
     text += line;
     for (const Lidar::Point *p = first; p < last; p++) {
       if (!returned(*p)) continue;  // no return, shown by the gap in the angles
-      snprintf(line, sizeof line, "P %.3f %.2f %d\n", p->angleDeg(), p->distanceMm(), p->quality);
+      snprintf(line, sizeof line, "P %.3f %ld %d\n", p->angleDeg(), lround(p->distanceMm()), p->quality);
       text += line;
     }
   }

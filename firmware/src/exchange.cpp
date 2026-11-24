@@ -1,5 +1,6 @@
 #include "exchange.h"
 
+#include <cmath>
 #include <sstream>
 #include <vector>
 
@@ -19,6 +20,9 @@ std::string trimmed(std::string number) {
   if (number.back() == '.') number.pop_back();
   return number;
 }
+
+// A distance to the nearest whole mm, halves up, as board_link.py rounds it
+std::string wholeMm(const std::string &mm) { return std::to_string((long)std::floor(std::stod(mm) + 0.5)); }
 
 std::string quoted(const std::string &text) {
   std::string out = "\"";
@@ -48,7 +52,7 @@ std::string line(const std::string &scanText, const std::string &station, bool h
       if (++turns == 1 && w.size() > 1) samples = w[1];
     } else if (w[0] == "P" && turns == 1 && w.size() > 3) {
       if (returns++) points += ",";
-      points += "[" + trimmed(w[1]) + "," + trimmed(w[2]) + "," + w[3] + "]";
+      points += "[" + trimmed(w[1]) + "," + wholeMm(w[2]) + "," + w[3] + "]";
     }
   }
   if (name.empty() || !turns) return "";

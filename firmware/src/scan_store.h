@@ -5,9 +5,10 @@
 //   BOOT <start-up> <scan> <ms>   ms since start-up, the board has no clock
 //   LIDAR <model> <firmware> <hardware> <serial>
 //   T <samples> <returns>         each turn, then a P <deg> <mm> <quality> line for each return,
-//                                 raw. Samples with no return are left out, as the gap in the angles
-//                                 shows them, and the counts check the text. FORMAT 1 had T alone
-//                                 and kept them with mm 0.
+//                                 mm to the nearest whole mm, as finer is pointless for the lidar
+//                                 (quarter mm before 2026-11-24). Samples with no return are left
+//                                 out, as the gap in the angles shows them, and the counts check
+//                                 the text. FORMAT 1 had T alone and kept them with mm 0.
 #pragma once
 #include <Arduino.h>
 

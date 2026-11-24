@@ -150,6 +150,39 @@ void testModel() {
   check(!m.find("b2"), "scans no longer saved forgotten");
 }
 
+void testDrawingAnswers() {
+  // saved here, being drawn, current, revision, based on, answer, what
+  struct Case {
+    bool saved, beingDrawn;
+    int current, revision, basedOn;
+    DrawingAnswer answer;
+    const char *what;
+  } cases[] = {
+      {true, false, 3, 4, 3, DrawingAnswer::TAKE, "unchanged here since, taken"},
+      {true, false, 5, 4, 3, DrawingAnswer::CLASH, "changed here since, a clash"},
+      {true, false, 4, 4, 3, DrawingAnswer::ALREADY, "taken before, reply lost"},
+      {true, true, 3, 4, 3, DrawingAnswer::HOLD, "being drawn, held"},
+      {true, true, 4, 4, 3, DrawingAnswer::ALREADY, "taken before, even while drawing"},
+      {false, false, 0, 2, 0, DrawingAnswer::NO_SCAN, "scan not saved here"},
+      {true, false, 0, 2, 0, DrawingAnswer::TAKE, "no drawing here yet, taken"},
+  };
+  for (const Case &c : cases)
+    check(LinkModel::answerDrawing(c.saved, c.beingDrawn, c.current, c.revision, c.basedOn) == c.answer, c.what);
+
+  const int revisions[][2] = {{0, 1}, {1, 3}, {2, 3}, {3, 5}, {4, 5}};
+  for (const auto &r : revisions)
+    check(LinkModel::nextRevision(r[0]) == r[1], "revision after " + std::to_string(r[0]) + " is odd");
+
+  LinkModel m;
+  m.setSurvey("Trip1", {"1"}, {});
+  std::string displaced;
+  m.accept("b1", "1", false, false, displaced);
+  m.drawingAgreed("b1", 4);
+  check(m.find("b1")->state == ScanState::ACKNOWLEDGED && m.find("b1")->acknowledged == 4, "SexyTopo's drawing agreed");
+  m.drawingAgreed("b2", 2);
+  check(m.find("b2")->state == ScanState::NEW && m.find("b2")->acknowledged == 2, "agreed without a station");
+}
+
 void testExchange() {
   const std::string line = exchange::line(readFile("scan.txt"), "5a", true, true);
   JsonDocument got, expected;
@@ -164,6 +197,7 @@ int main() {
   testFrames();
   testFrameWritten();
   testModel();
+  testDrawingAnswers();
   testExchange();
   std::printf("%d failed\n", failures);
   return failures ? 1 : 0;

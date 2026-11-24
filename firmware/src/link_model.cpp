@@ -8,6 +8,13 @@ const char *const STATE_NAMES[] = {"new", "accepted", "sent", "acknowledged", "e
 
 const char *LinkModel::stateName(ScanState state) { return STATE_NAMES[(int)state]; }
 
+DrawingAnswer LinkModel::answerDrawing(bool saved, bool beingDrawn, int current, int revision, int basedOn) {
+  if (!saved) return DrawingAnswer::NO_SCAN;
+  if (current == revision) return DrawingAnswer::ALREADY;
+  if (beingDrawn) return DrawingAnswer::HOLD;
+  return current == basedOn ? DrawingAnswer::TAKE : DrawingAnswer::CLASH;
+}
+
 void LinkModel::setSurvey(const std::string &name, const std::vector<std::string> &stations,
                           const std::map<std::string, std::string> &scanStations) {
   if (name == surveyName)
@@ -82,6 +89,13 @@ void LinkModel::clearStation(const std::string &scan) {
 void LinkModel::drawingSaved(const std::string &scan) {
   auto s = scans.find(scan);
   if (s != scans.end() && !s->second.station.empty()) s->second.state = ScanState::ACCEPTED;
+}
+
+void LinkModel::drawingAgreed(const std::string &scan, int revision) {
+  ScanLink &link = scans[scan];
+  link.acknowledged = revision;
+  if (!link.station.empty()) link.state = ScanState::ACKNOWLEDGED;
+  link.reason.clear();
 }
 
 void LinkModel::forget(const std::string &scan) { scans.erase(scan); }

@@ -4,6 +4,7 @@
 // are metres from the scanner in SexyTopo's cross section view, x to the right and y down, as on
 // the screen. The scanner is taken to be at the station.
 #pragma once
+#include <string>
 #include <vector>
 
 // LineType.java, in its order, with what the drawing and finishing of a line need
@@ -43,9 +44,22 @@ class Sketch {
   struct Path {
     std::vector<Coord> points;
     LineType type = LineType::SKETCH;
+    std::string colour = "BLACK";  // SexyTopo's, kept as it came
     const Coord &start() const { return points.front(); }
     const Coord &end() const { return points.back(); }
     bool isClosed() const { return points.size() > 2 && start() == end(); }
+  };
+
+  // What SexyTopo drew that can't be edited here, shown and written back as it came
+  struct Extras {
+    struct Mark {
+      Coord at;
+      std::string text;
+      bool symbol;  // a symbol shown by a short name, otherwise text
+    };
+    std::string areas = "[]", labels = "[]", symbols = "[]";  // SexyTopo's JSON
+    std::vector<std::vector<Coord>> outlines;                 // of the areas
+    std::vector<Mark> marks;
   };
 
   void startPath(Coord start, LineType type = LineType::SKETCH);
@@ -61,6 +75,8 @@ class Sketch {
   void clear();
   void forget();  // drop everything, history too, for a different scan
   void setPaths(const std::vector<Path> &paths);  // lines read back, with no history
+  void setExtras(const Extras &extras) { kept = extras; }
+  const Extras &extras() const { return kept; }
   bool changed() const { return !history.empty(); }
   void forgetHistory() { history.clear(); }  // undo goes back only to here
   void revert() { while (undo()) {} }        // back to how it was when the history began
@@ -81,6 +97,7 @@ class Sketch {
   void apply(Step step, const Path &added);
 
   std::vector<Path> finished;
+  Extras kept;
   std::vector<Step> history;
   Path current;
   bool active = false;

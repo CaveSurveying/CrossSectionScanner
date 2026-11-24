@@ -3,9 +3,11 @@
 //   {"format": "XScan sketch 1", "scan": "b0007-003", "revision": 2, "sexytopo": "26c93a7a",
 //    "sketch": {"paths": [{"colour": "BLACK", "points": [{"x": 0.1, "y": -0.2}, ...]}, ...],
 //               "areas": [], "labels": [], "symbols": []}}
-// Plain sketch lines leave out SexyTopo's line-type, as SexyTopo does.
+// Plain sketch lines leave out SexyTopo's line-type, as SexyTopo does. Colours, areas, labels and
+// symbols from SexyTopo are kept and written back as they came. Points to 1 mm.
 #pragma once
 #include <Arduino.h>
+#include <ArduinoJson.h>
 
 #include "sketch.h"
 
@@ -15,4 +17,6 @@ size_t maxSize(const Sketch &sketch);
 void write(Print &out, const Sketch &sketch, const String &scan, int revision);
 // Replace the sketch's lines with those read, false if it can't be read (or is too big to hold)
 bool read(Stream &in, Sketch &sketch, int &revision);
+// The same from a drawing already read, as SexyTopo sends one
+bool fromJson(JsonVariantConst doc, Sketch &sketch, int &revision);
 }  // namespace sketch_file

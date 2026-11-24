@@ -219,6 +219,50 @@ Link 6, from that try (user asked 2026-11-24, written the same day).
 3. A scan moved to another station on the board left its old section in SexyTopo, so it appeared twice. Now the old section is removed too, unless edited in SexyTopo since it came from the board.
 4. Undoing or deleting a section in SexyTopo. A scan counts as on its station only while the station has a section. StationWatcher sends scan_station (docs/LINK.md) when that changes, so the board takes the scan off its station, and a redo puts it back. Sketch undo and redo now broadcast a survey update so the link hears of them. The survey message on connecting leaves such scans out, and the board clears acknowledged scans it leaves out.
 
+Link 7, keeping the link alive in the background. Dropped 2026-11-24 (user), so the scanner behaves as the instrument does.
+
+Found. Neither link has anything of its own to stay alive. Both stay up while SexyTopo is on the table, sketch or 3D screen, which keep the screen on (FLAG_KEEP_SCREEN_ON), and both are lost once SexyTopo leaves the screen or the phone is locked, as Android freezes it (logged 08:51 on 2026-11-24, two minutes after Home). The device screen doesn't keep the screen on. The scanner already reconnects as the BLE instruments do, through ReconnectionPolicy and the Auto-reconnect setting (default off, 15 minutes). So in use, keep SexyTopo on the table or sketch screen, and turn Auto-reconnect on for either link to come back after a drop.
+
+For Rich, if keeping links alive in the background is ever wanted underground. A foreground service of type connectedDevice, started when the user connects (Android 12 and later don't let a background app start one), with a quiet notification, covering the instrument and the scanner together.
+
+Found while reading, not the scanner's. NewStationNotificationService (vibrate on new station) is a plain started service, which Android stops about a minute after the app leaves the screen (logged 08:50 on 2026-11-24, "Stopping service due to app idle"). It is only started by StartUpActivity, so after that vibrating on a new station stops until SexyTopo is restarted. A receiver held by the app, rather than a service, would do. Upstream bug, to report to Rich rather than fix here.
+
+Link 8 plan, the same drawing both ways (agreed with the user 2026-11-24, each stage with its own go-ahead).
+
+Whole drawings, not a merge. Drawing at both ends at once is unlikely, so each end sends its whole drawing when it finishes editing, and a clash is asked about.
+
+- Revisions. Each drawing has a revision, and the agreed revision is the last both ends have. A drawing sent says which agreed revision it was based on. If the other end hasn't changed since then, it simply replaces the drawing. If both have, it is a clash. A new revision is numbered above any either end has used.
+- The board sends on Save, as now. SexyTopo sends when the cross-section editor is left, if the drawing differs from the agreed one, and on the next connection if not connected. Differs from the agreed one is all SexyTopo needs to know there is something to send, so it survives a restart.
+- Clashes happen only when the board was out of reach, or both had the section open. SexyTopo always asks, with its existing question. The board can't ask well, so it shows clash, see SexyTopo.
+- Keeping the board's drawing. SexyTopo takes it and replies ok to its revision, which becomes agreed at both ends.
+- Keeping SexyTopo's drawing. SexyTopo sends its drawing as a new revision based on the board revision that clashed. The board replaces its drawing and takes the new revision as agreed, unless it has been edited again since, which is a new clash and is asked again. If the board isn't connected, SexyTopo's drawing still differs from the agreed one, so it goes on the next connection. The board doesn't resend a drawing in the conflict state, so the two can't cross.
+- Board drawing screen open when SexyTopo's drawing arrives. Held until Save or Cancel. Cancel takes SexyTopo's, Save sends the board's and is a clash.
+- The board holds SexyTopo's whole drawing and shows it, lines of every type, text as text, symbols as small markers with a short name, areas as outlines. Editing on the board stays limited to lines (draw, Undo, Clear, and Clear removes lines only). Colours, text, symbols and areas go back to SexyTopo unchanged.
+- Precision 1 mm (user 2026-11-24). Lidar accuracy is about ±30 mm and a screen pixel 1 to 2 cm, so anything finer is pointless. Drawing points to 3 decimals of a metre (now 4), lidar distances to whole mm on the board itself (now quarter mm as measured), angles left as the lidar gives them (1/64 degree, about 3 mm sideways at 12 m).
+
+Stages.
+a. Board. Lidar distances stored to whole mm, drawings to 1 mm, and the exchange line and board_link.py round too, so scans already on the board are sent at 1 mm. Firmware host tests and make_expected.py follow.
+b. Protocol 2 in docs/LINK.md. The drawing message SexyTopo to XScan, the revision rule, and the board's clash answer.
+c. SexyTopo. Sending when the cross-section editor is left or on connecting, the agreed revision in the scan's line, asking on a clash either way. Table-driven tests.
+d. Board. Holding and showing the whole drawing, line-only editing, holding an incoming drawing while drawing, the clash state.
+e. Tried on the phone.
+
+Written 2026-11-24 (a to d), protocol 2, firmware 0.7. Tried on the phone and working (user, 2026-11-24).
+
+- a. Scans saved to whole mm (lround), the exchange line and board_link.py round halves up the same way, drawing points to 3 decimals. make_expected.py rerun, test_jsonl.py checks a half rounds up.
+- c. SexyTopo. ScannerSession.changedDrawings finds sections whose drawing differs from the agreed hash, numbered with the next even revision, and agreed() records a revision taken. ScannerLink sends them after the survey message and on each survey update (the cross-section editor now broadcasts one on Done), one at a time per scan, never while the user has a conflict open for it, and takes drawing_reply. Keeping SexyTopo's drawing in a conflict records the scanner's clashing revision as agreed, so SexyTopo's is then sent based on it. Three new log lines, translated. 1093 unit tests pass.
+- d. Board. LinkModel::answerDrawing (take, already, hold, clash, no scan) and nextRevision (odd) with table-driven tests. Sketch keeps each line's colour and SexyTopo's areas, labels and symbols as JSON text, written back unchanged, and shows areas as outlines, text, and symbols as a ring with a short name. A drawing from SexyTopo while that scan's drawing screen is open is held, Cancel takes it, Save replies conflict and sends the board's.
+
+Found while reading, SexyTopo's own. The cross-section editor keeps only lines on Done (CrossSectionActivity.commitAndFinish copies the path details alone), so symbols, text and areas drawn in a cross-section are lost, though the editor offers those tools. Upstream bug, since fixed by Rich (29ec535a, "Fix xsections not preserving non-line elements"), merged into SexyTopo's SectionScanner 2026-11-24.
+
+Trying it on the phone.
+1. A scan with a station, drawn on the board, then edited in SexyTopo's cross-section editor and Done. The board's message line shows Drawing from SexyTopo and the drawing has SexyTopo's lines.
+2. Draw on the board and Save, SexyTopo takes it with no question.
+3. A clash. Edit in SexyTopo with the board switched off, draw on the board too, then connect. SexyTopo asks. Keep SexyTopo's, and the board takes it. Again, choosing the scanner's.
+4. SexyTopo's drawing arriving with the board's drawing screen open. Cancel shows SexyTopo's, Save asks in SexyTopo.
+
+e. Done 2026-11-24, the user reports it all working. SexyTopo Link 8 committed f359f6f3 and Rich's main merged in (93cda64f), so the β on the phone also keeps symbols, text and areas drawn in a cross-section.
+
 ## Software
 
 - PlatformIO with the Arduino framework on the ESP32

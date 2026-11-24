@@ -218,6 +218,7 @@ void Sketch::startPath(Coord start, LineType type) {
   current.points.clear();
   current.points.push_back(start);
   current.type = type;
+  current.colour = "BLACK";
   active = true;
 }
 
@@ -352,6 +353,7 @@ void Sketch::setPaths(const std::vector<Path> &paths) {
 
 void Sketch::forget() {
   finished.clear();
+  kept = Extras();
   history.clear();
   current.points.clear();
   active = false;
