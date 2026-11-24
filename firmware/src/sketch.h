@@ -56,13 +56,19 @@ class Sketch {
       Coord at;
       std::string text;
       bool symbol;  // a symbol shown by a short name, otherwise text
+      std::string colour;
+      float size;  // metres, the text's height or the symbol's width
+    };
+    struct Outline {
+      std::vector<Coord> points;
+      std::string colour;
     };
     std::string areas = "[]", labels = "[]", symbols = "[]";  // SexyTopo's JSON
-    std::vector<std::vector<Coord>> outlines;                 // of the areas
+    std::vector<Outline> outlines;                            // of the areas
     std::vector<Mark> marks;
   };
 
-  void startPath(Coord start, LineType type = LineType::SKETCH);
+  void startPath(Coord start, LineType type = LineType::SKETCH, const std::string &colour = "BLACK");
   void lineTo(Coord point);
   // Finish the line as SexyTopo does with Snap to Lines and Auto-Orientation on. An outline whose
   // ends come within snapDistance (metres) is closed, a wall is turned to have the passage (the

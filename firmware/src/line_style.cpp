@@ -2,6 +2,8 @@
 
 #include <cmath>
 
+#include "colours.h"
+
 namespace line_style {
 namespace {
 constexpr float STEP_PX = 1;  // how finely the line is walked for its pattern
@@ -33,8 +35,8 @@ class Pen {
 
 void draw(lgfx::LGFXBase &lcd, const std::vector<Point> &points, LineType type, uint16_t colour) {
   const LineTypeInfo &info = LineTypeInfo::of(type);
-  // thinner than a plain line can't be drawn, so it is greyed
-  Pen pen(lcd, info.widthFactor >= 1.5f, info.widthFactor < 0.75f ? (uint16_t)TFT_DARKGREY : colour);
+  // thinner than a plain line can't be drawn, so it is dimmed
+  Pen pen(lcd, info.widthFactor >= 1.5f, info.widthFactor < 0.75f ? colours::dimmed(colour) : colour);
   if (points.size() == 1 || (points.size() == 2 && points[0].x == points[1].x && points[0].y == points[1].y)) {
     lcd.drawPixel(lround(points[0].x), lround(points[0].y), colour);
     return;

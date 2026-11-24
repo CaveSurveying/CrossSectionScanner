@@ -86,14 +86,18 @@ bool fromJson(JsonVariantConst doc, Sketch &sketch, int &revision) {
   extras.labels = textOf(drawing["labels"]);
   extras.symbols = textOf(drawing["symbols"]);
   for (JsonObjectConst area : drawing["areas"].as<JsonArrayConst>()) {
-    std::vector<Coord> outline;
-    for (JsonObjectConst point : area["points"].as<JsonArrayConst>()) outline.push_back(coordOf(point));
+    Sketch::Extras::Outline outline;
+    for (JsonObjectConst point : area["points"].as<JsonArrayConst>()) outline.points.push_back(coordOf(point));
+    outline.colour = area["colour"] | "BLACK";
     extras.outlines.push_back(outline);
   }
+  // sizes default as SexyTopo reads them (SketchJsonTranslater)
   for (JsonObjectConst label : drawing["labels"].as<JsonArrayConst>())
-    extras.marks.push_back({coordOf(label["location"]), label["text"] | "", false});
+    extras.marks.push_back(
+        {coordOf(label["location"]), label["text"] | "", false, label["colour"] | "BLACK", label["size"] | 0.0f});
   for (JsonObjectConst symbol : drawing["symbols"].as<JsonArrayConst>())
-    extras.marks.push_back({coordOf(symbol["location"]), shortName(symbol["symbol-id"] | ""), true});
+    extras.marks.push_back({coordOf(symbol["location"]), shortName(symbol["symbol-id"] | ""), true,
+                            symbol["colour"] | "BLACK", symbol["size"] | 1.0f});
   revision = doc["revision"] | 0;
   sketch.setPaths(paths);
   sketch.setExtras(extras);

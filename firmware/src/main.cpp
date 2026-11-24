@@ -2,10 +2,10 @@
 // ‹ and › step through saved scans, Stn gives the scan shown its station from SexyTopo's list (with
 // vertical or horizontal and facing on or back, then Accept), so it is sent to SexyTopo over
 // Bluetooth (link.h),
-// and Draw opens the drawing screen for the scan shown, where
-// Type picks the kind of line (as SexyTopo's), Save keeps the drawing and Cancel puts it back as
-// it was. Drawings edited in SexyTopo come back and are shown, with its text, symbols and areas,
-// though only lines can be edited here.
+// and Draw opens the drawing screen for the scan shown, where Type picks the colour and kind of line
+// (as SexyTopo's), Save keeps the drawing and Cancel puts it back as it was. Drawings edited in
+// SexyTopo come back and are shown in their colours, with its text, symbols and areas, though only
+// lines can be edited here.
 // A computer on the USB port can watch, ask for scans and fetch saved ones for debugging
 // (tools/board_link.py). Touch calibration runs if the screen is held at power-on.
 //
@@ -35,10 +35,12 @@
 //   LINK            the link state, stations and each scan's station and status, as JSON
 // and LINK ... lines from the Bluetooth link with SexyTopo, for debugging
 #include <Arduino.h>
+#include <algorithm>
 #include <cyd_display.h>
 
 #include "lidar.h"
 #include "link.h"
+#include "colours.h"
 #include "line_style.h"
 #include "scan_store.h"
 #include "scan_view.h"
@@ -61,11 +63,11 @@ constexpr int PICK_CANCEL_X = 4, ACCEPT_X = 124, PICK_BTN_W = 112;
 // Drawing screen buttons
 constexpr int UNDO_X = 2, CLEAR_X = 45, TYPE_X = 88, CANCEL_X = 157, SAVE_X = 200;
 constexpr int EDIT_W = 40, TYPE_W = 66;
-// Line type picker over the view, two columns
-constexpr int PICK_W = VIEW / 2, PICK_H = VIEW / ((LineTypeInfo::COUNT + 1) / 2);
+// Line type picker over the view, a row of brush colours then the types in two columns
+constexpr int SWATCH_H = 32, SWATCH_W = VIEW / colours::BRUSH_COUNT;
+constexpr int PICK_W = VIEW / 2, PICK_H = (VIEW - SWATCH_H) / ((LineTypeInfo::COUNT + 1) / 2);
 constexpr unsigned long LIDAR_CHECK_MS = 2000;  // how often to look for a lidar while none is found
 constexpr int SCAN_TURNS = 1;
-constexpr uint16_t LINE_COLOUR = TFT_WHITE;
 constexpr int SNAP_PX = 10;  // SexyTopo's SNAP_TO_LINE_SENSITIVITY_DP, about 1 px per dp on this screen
 constexpr int MIN_LINE_PX = 10;  // SexyTopo's MINIMUM_DETAIL_SIZE_DP, smaller typed lines are dropped
 
@@ -82,12 +84,15 @@ bool scanning = false;
 bool drawing = false;  // drawing screen open
 bool picking = false;  // line type picker open on the drawing screen
 LineType lineType = LineType::SKETCH;  // for the next line drawn
+int brush = 0;                          // colours::BRUSHES, for the next line drawn
 int shown = -1;        // saved scan on the screen, -1 for none
 int sketchRevision = 0;  // of the drawing shown, 0 if it has never been saved
 bool reloadShown = false;  // SexyTopo has replaced the drawing shown
 bool choosingStation = false;  // station picker open on the scan screen
 int stationPage = 0;           // of the station picker, 0 for the newest
 bool pickHorizontal = false, pickBack = false;  // for the station picked
+
+uint16_t brushColour() { return colours::of(colours::BRUSHES[brush].name); }
 String pickedStation;  // to be given on Accept, empty for no station
 
 bool inside(int x, int y, int bx, int bw) { return x >= bx && x < bx + bw && y >= BTN_Y && y < BTN_Y + BTN_H; }
@@ -114,6 +119,7 @@ void drawButtons() {
     drawButton(UNDO_X, EDIT_W, !picking && sketch.changed(), TFT_NAVY, "Undo");
     drawButton(CLEAR_X, EDIT_W, !picking && !sketch.paths().empty(), TFT_MAROON, "Clear");
     drawButton(TYPE_X, TYPE_W, true, picking ? TFT_ORANGE : TFT_PURPLE, LineTypeInfo::of(lineType).label);
+    lcd.fillRect(TYPE_X + 10, BTN_Y + BTN_H - 7, TYPE_W - 20, 3, brushColour());  // the colour in use
     drawButton(CANCEL_X, EDIT_W, !picking, TFT_NAVY, "Cancel");
     drawButton(SAVE_X, EDIT_W, !picking, TFT_DARKGREEN, "Save");
   } else if (choosingStation) {
@@ -157,26 +163,61 @@ void drawPath(const Sketch::Path &path) {
     scanView.toScreen(c, x, y);
     points.push_back({(float)x, (float)y});
   }
-  line_style::draw(lcd, points, path.type, LINE_COLOUR);
+  line_style::draw(lcd, points, path.type, colours::of(path.colour));
 }
 
-// What SexyTopo drew that can't be edited here, areas as outlines, symbols and text as text
+// Text as SexyTopo draws it (PointRenderer.drawTextDetail), size the font size in pixels, from the
+// bottom left of its first line, a line further down for each new line
+void drawText(const std::string &text, int x, int y, float size) {
+  constexpr float FREE_SANS_PX = 17.6f;  // FreeSans9pt7b's font size, 9 pt at 141 dpi
+  constexpr float SMALLEST = 12;         // below this the board's own 8 px font, as smaller can't be read
+  if (size < SMALLEST) {
+    lcd.setFont(&fonts::Font0);
+    lcd.setTextSize(1);
+  } else {
+    lcd.setFont(&fonts::FreeSans9pt7b);
+    lcd.setTextSize(size / FREE_SANS_PX);
+  }
+  lcd.setTextDatum(baseline_left);
+  size_t start = 0;
+  while (start <= text.size()) {
+    size_t end = text.find('\n', start);
+    if (end == std::string::npos) end = text.size();
+    lcd.drawString(text.substr(start, end - start).c_str(), x, y);
+    y += lcd.fontHeight();
+    start = end + 1;
+  }
+  lcd.setFont(&fonts::Font0);
+  lcd.setTextSize(1);
+  lcd.setTextDatum(top_left);
+}
+
+// What SexyTopo drew that can't be edited here, in its colours. Areas as outlines, text as text and
+// symbols as a ring their size with a short name.
 void drawExtras() {
   const Sketch::Extras &extras = sketch.extras();
-  for (const std::vector<Coord> &outline : extras.outlines)
-    for (size_t i = 0; i < outline.size(); i++) {
+  const float pixelsPerMetre = 1 / scanView.metresPerPixel();
+  for (const Sketch::Extras::Outline &outline : extras.outlines)
+    for (size_t i = 0; i < outline.points.size(); i++) {
       int x0, y0, x1, y1;
-      scanView.toScreen(outline[i], x0, y0);
-      scanView.toScreen(outline[(i + 1) % outline.size()], x1, y1);
-      lcd.drawLine(x0, y0, x1, y1, TFT_DARKCYAN);
+      scanView.toScreen(outline.points[i], x0, y0);
+      scanView.toScreen(outline.points[(i + 1) % outline.points.size()], x1, y1);
+      lcd.drawLine(x0, y0, x1, y1, colours::of(outline.colour));
     }
-  lcd.setTextSize(1);
-  lcd.setTextColor(TFT_CYAN);
   for (const Sketch::Extras::Mark &mark : extras.marks) {
     int x, y;
     scanView.toScreen(mark.at, x, y);
-    if (mark.symbol) lcd.drawCircle(x, y, 3, TFT_CYAN);
-    lcd.drawString(mark.text.c_str(), mark.symbol ? x + 5 : x, y - 4);
+    const uint16_t colour = colours::of(mark.colour);
+    lcd.setTextColor(colour);
+    if (!mark.symbol) {
+      drawText(mark.text, x, y, mark.size * pixelsPerMetre);
+      continue;
+    }
+    const int radius = std::max(3, (int)lroundf(mark.size * pixelsPerMetre / 2));
+    lcd.drawCircle(x, y, radius, colour);
+    lcd.setTextDatum(middle_left);
+    lcd.drawString(mark.text.c_str(), x + radius + 2, y);
+    lcd.setTextDatum(top_left);
   }
 }
 
@@ -200,35 +241,53 @@ void showSaved(int i) {
   showLinkState();
 }
 
-// The line types over the view, each with a sample, the one in use highlighted
+// The brush colours along the top, then the line types each with a sample in the colour in use,
+// those in use highlighted
 void drawPicker() {
   lcd.fillRect(0, 0, VIEW, VIEW, TFT_BLACK);
+  for (int i = 0; i < colours::BRUSH_COUNT; i++) {
+    const int x = i * SWATCH_W;
+    lcd.fillRoundRect(x + 3, 3, SWATCH_W - 6, SWATCH_H - 6, 4, colours::of(colours::BRUSHES[i].name));
+    if (i == brush) lcd.drawRoundRect(x + 1, 1, SWATCH_W - 2, SWATCH_H - 2, 5, TFT_WHITE);
+  }
   lcd.setTextSize(1);
   lcd.setTextColor(TFT_WHITE);
   for (int i = 0; i < LineTypeInfo::COUNT; i++) {
-    const int x = i % 2 * PICK_W, y = i / 2 * PICK_H;
+    const int x = i % 2 * PICK_W, y = SWATCH_H + i / 2 * PICK_H;
     if (i == (int)lineType) lcd.fillRoundRect(x + 2, y + 2, PICK_W - 4, PICK_H - 4, 6, TFT_NAVY);
     else lcd.drawRoundRect(x + 2, y + 2, PICK_W - 4, PICK_H - 4, 6, TFT_DARKGREY);
-    lcd.drawString(LineTypeInfo::of((LineType)i).label, x + 8, y + 6);
-    const float lineY = y + PICK_H * 0.62f;
-    line_style::draw(lcd, {{x + 12.0f, lineY}, {x + PICK_W - 12.0f, lineY}}, (LineType)i, LINE_COLOUR);
+    lcd.drawString(LineTypeInfo::of((LineType)i).label, x + 8, y + 5);
+    const float lineY = y + PICK_H * 0.65f;
+    line_style::draw(lcd, {{x + 12.0f, lineY}, {x + PICK_W - 12.0f, lineY}}, (LineType)i, brushColour());
   }
+}
+
+String lineDescription() {
+  return String(LineTypeInfo::of(lineType).label) + " lines, " + colours::BRUSHES[brush].label;
 }
 
 void showPicker(bool open) {
   picking = open;
   if (open) {
     drawPicker();
-    showMessage("Pick the type of line");
+    showMessage("Pick the colour and type of line");
   } else {
     drawView();
-    showMessage(String(LineTypeInfo::of(lineType).label) + " lines");
+    showMessage(lineDescription());
   }
   drawButtons();
 }
 
+// A colour leaves the picker open for the type, a type closes it
 void pressPicker(int x, int y) {
-  const int i = y / PICK_H * 2 + x / PICK_W;
+  if (y < SWATCH_H) {
+    brush = std::min(x / SWATCH_W, colours::BRUSH_COUNT - 1);
+    drawPicker();
+    showMessage(lineDescription());
+    drawButtons();
+    return;
+  }
+  const int i = (y - SWATCH_H) / PICK_H * 2 + x / PICK_W;
   if (i < LineTypeInfo::COUNT) lineType = (LineType)i;
   showPicker(false);
 }
@@ -550,11 +609,11 @@ void penOnDrawing(bool touched, int x, int y) {
     drawView();  // the line as finished, snapped and simplified
     drawButtons();  // Clear may now be possible
   } else if (onView && !sketch.activePath()) {
-    sketch.startPath(scanView.toSketch(x, y), lineType);
-    lcd.drawPixel(x, y, LINE_COLOUR);
+    sketch.startPath(scanView.toSketch(x, y), lineType, colours::BRUSHES[brush].name);
+    lcd.drawPixel(x, y, brushColour());
   } else if (onView && (x != lastX || y != lastY)) {
     sketch.lineTo(scanView.toSketch(x, y));
-    lcd.drawLine(lastX, lastY, x, y, LINE_COLOUR);
+    lcd.drawLine(lastX, lastY, x, y, brushColour());
   }
   lastX = x, lastY = y;
 }

@@ -263,6 +263,13 @@ Trying it on the phone.
 
 e. Done 2026-11-24, the user reports it all working. SexyTopo Link 8 committed f359f6f3 and Rich's main merged in (93cda64f), so the β on the phone also keeps symbols, text and areas drawn in a cross-section.
 
+Colours, firmware 0.7.1 (user 2026-11-24, after Link 8). Only lines had been drawn, all in white, and SexyTopo's text was small and cyan whatever its colour and size.
+
+- firmware/src/colours.cpp has SexyTopo's colours (Colour.java), drawn as in its dark mode, black as white and blue as dodger blue, unknown names as white.
+- Lines, areas, text and symbols are drawn in their own colours. Text is at its own size, from the bottom left of its first line as SexyTopo draws it, with the board's 8 px font when smaller than 12 px. Symbols are a ring their size. Line types too thin to draw at their width are dimmed rather than grey.
+- The Type picker has a row of SexyTopo's eight brush colours above the types (BrushColour.java). Picking a colour leaves the picker open, picking a type closes it. A stripe on the Type button shows the colour in use, and new lines take it. Lines of different colours don't join or snap, as PathDetail.canJoin.
+- Tests. tests/colours/test_colours.cpp (table-driven) and a colour check in tests/sketch.
+
 ## Software
 
 - PlatformIO with the Arduino framework on the ESP32

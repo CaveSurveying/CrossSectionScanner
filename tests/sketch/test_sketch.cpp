@@ -15,8 +15,8 @@ void check(bool ok, const char *what) {
 }
 
 // A straight stroke from a to b with many points, as the pen gives
-void stroke(Sketch &s, Coord a, Coord b, float snap = 0.05, int steps = 50) {
-  s.startPath(a);
+void stroke(Sketch &s, Coord a, Coord b, float snap = 0.05, int steps = 50, const char *colour = "BLACK") {
+  s.startPath(a, LineType::SKETCH, colour);
   for (int i = 1; i <= steps; i++) s.lineTo({a.x + (b.x - a.x) * i / steps, a.y + (b.y - a.y) * i / steps});
   s.finishPath(snap);
 }
@@ -63,6 +63,13 @@ int main() {
     check(s.paths().size() == 1, "a line starting near another's end joins it into one line");
     check(p.start() == Coord{0, 0} && p.points[1] == Coord{1, 0} && p.end() == Coord{1, 1}, "joined line runs on through the join");
     check(s.undo() && s.paths().size() == 1 && s.paths()[0].end() == Coord{1, 0}, "undo of a join gives back the line it joined");
+  }
+  {
+    Sketch s;
+    stroke(s, {0, 0}, {1, 0});
+    stroke(s, {1.02, 0.01}, {1, 1}, 0.05, 50, "RED");
+    check(s.paths().size() == 2 && s.paths()[1].colour == "RED" && s.paths()[1].start() == Coord{1.02, 0.01},
+          "a line of another colour neither joins nor snaps, as PathDetail.canJoin");
   }
   {
     Sketch s;

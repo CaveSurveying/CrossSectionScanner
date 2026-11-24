@@ -90,8 +90,10 @@ const Coord &endToJoinBefore(const Path &path, const Coord &point) {
   return info(path).isOriented() ? path.start() : endNearest(path, point);
 }
 
-// PathDetail.canJoin, lines of the same type (all one colour here) unless either is a loop
-bool canJoin(const Path &a, const Path &b) { return a.type == b.type && !a.isClosed() && !b.isClosed(); }
+// PathDetail.canJoin, lines of the same type and colour unless either is a loop
+bool canJoin(const Path &a, const Path &b) {
+  return a.type == b.type && a.colour == b.colour && !a.isClosed() && !b.isClosed();
+}
 
 // LineOrienter.orientToInterior, with the station (0, 0) as the only leg. Each segment votes,
 // weighted by its length, for the side the station is on, and the line is turned round if needed
@@ -214,11 +216,11 @@ int Sketch::pointCount() const {
   return n;
 }
 
-void Sketch::startPath(Coord start, LineType type) {
+void Sketch::startPath(Coord start, LineType type, const std::string &colour) {
   current.points.clear();
   current.points.push_back(start);
   current.type = type;
-  current.colour = "BLACK";
+  current.colour = colour;
   active = true;
 }
 
