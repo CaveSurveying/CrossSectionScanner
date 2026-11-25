@@ -1,0 +1,1262 @@
+{
+  "sexyTopoVersionName": "1.15.0-debug",
+  "sexyTopoVersionCode": 102,
+  "name": "InitialConnect",
+  "stations": [
+    {
+      "name": "1",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 7,
+          "azimuth": 43,
+          "inclination": -13,
+          "destination": "2",
+          "wasShotBackwards": false,
+          "index": 0,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "2",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 1,
+          "azimuth": 313,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 1,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 133,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 2,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 3,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 4,
+          "promotedFrom": []
+        },
+        {
+          "distance": 8,
+          "azimuth": 112,
+          "inclination": 16,
+          "destination": "3",
+          "wasShotBackwards": false,
+          "index": 5,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "3",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 1,
+          "azimuth": 22,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 6,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 202,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 7,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 8,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 9,
+          "promotedFrom": []
+        },
+        {
+          "distance": 7,
+          "azimuth": 45,
+          "inclination": 11,
+          "destination": "4",
+          "wasShotBackwards": false,
+          "index": 10,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "4",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 1,
+          "azimuth": 315,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 11,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 135,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 12,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 13,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 14,
+          "promotedFrom": []
+        },
+        {
+          "distance": 11,
+          "azimuth": 130,
+          "inclination": -1,
+          "destination": "5",
+          "wasShotBackwards": false,
+          "index": 15,
+          "promotedFrom": []
+        },
+        {
+          "distance": 9,
+          "azimuth": 121,
+          "inclination": 4,
+          "destination": "12",
+          "wasShotBackwards": false,
+          "index": 50,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "5",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 2,
+          "azimuth": 40,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 16,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 220,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 17,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 18,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 19,
+          "promotedFrom": []
+        },
+        {
+          "distance": 6,
+          "azimuth": 100,
+          "inclination": 7,
+          "destination": "6",
+          "wasShotBackwards": false,
+          "index": 20,
+          "promotedFrom": []
+        },
+        {
+          "distance": 5,
+          "azimuth": 118,
+          "inclination": 4,
+          "destination": "21",
+          "wasShotBackwards": false,
+          "index": 95,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "6",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 3,
+          "azimuth": 10,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 21,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 190,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 22,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 23,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 24,
+          "promotedFrom": []
+        },
+        {
+          "distance": 6,
+          "azimuth": 132,
+          "inclination": -13,
+          "destination": "7",
+          "wasShotBackwards": false,
+          "index": 25,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "7",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 2,
+          "azimuth": 42,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 26,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 222,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 27,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 28,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 29,
+          "promotedFrom": []
+        },
+        {
+          "distance": 14,
+          "azimuth": 58,
+          "inclination": 10,
+          "destination": "8",
+          "wasShotBackwards": false,
+          "index": 30,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "8",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 1,
+          "azimuth": 328,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 31,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 148,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 32,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 33,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 34,
+          "promotedFrom": []
+        },
+        {
+          "distance": 8,
+          "azimuth": 95,
+          "inclination": -5,
+          "destination": "9",
+          "wasShotBackwards": false,
+          "index": 35,
+          "promotedFrom": []
+        },
+        {
+          "distance": 9,
+          "azimuth": 111,
+          "inclination": 14,
+          "destination": "18",
+          "wasShotBackwards": false,
+          "index": 80,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "9",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 2,
+          "azimuth": 5,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 36,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 185,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 37,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 38,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 39,
+          "promotedFrom": []
+        },
+        {
+          "distance": 9,
+          "azimuth": 67,
+          "inclination": -12,
+          "destination": "10",
+          "wasShotBackwards": false,
+          "index": 40,
+          "promotedFrom": []
+        },
+        {
+          "distance": 7,
+          "azimuth": 81,
+          "inclination": -6,
+          "destination": "24",
+          "wasShotBackwards": false,
+          "index": 110,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "10",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 2,
+          "azimuth": 337,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 41,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 157,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 42,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 43,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 44,
+          "promotedFrom": []
+        },
+        {
+          "distance": 13,
+          "azimuth": 77,
+          "inclination": 6,
+          "destination": "11",
+          "wasShotBackwards": false,
+          "index": 45,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "11",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 3,
+          "azimuth": 347,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 46,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 167,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 47,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 48,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 49,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "12",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 1,
+          "azimuth": 31,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 51,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 211,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 52,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 53,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 54,
+          "promotedFrom": []
+        },
+        {
+          "distance": 11,
+          "azimuth": 62,
+          "inclination": -11,
+          "destination": "13",
+          "wasShotBackwards": false,
+          "index": 55,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "13",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 1,
+          "azimuth": 332,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 56,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 152,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 57,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 58,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 59,
+          "promotedFrom": []
+        },
+        {
+          "distance": 5,
+          "azimuth": 97,
+          "inclination": -11,
+          "destination": "14",
+          "wasShotBackwards": false,
+          "index": 60,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "14",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 2,
+          "azimuth": 7,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 61,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 187,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 62,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 63,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 64,
+          "promotedFrom": []
+        },
+        {
+          "distance": 5,
+          "azimuth": 52,
+          "inclination": 11,
+          "destination": "15",
+          "wasShotBackwards": false,
+          "index": 65,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "15",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 1,
+          "azimuth": 322,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 66,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 142,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 67,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 68,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 69,
+          "promotedFrom": []
+        },
+        {
+          "distance": 9,
+          "azimuth": 128,
+          "inclination": -14,
+          "destination": "16",
+          "wasShotBackwards": false,
+          "index": 70,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "16",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 1,
+          "azimuth": 38,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 71,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 218,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 72,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 73,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 74,
+          "promotedFrom": []
+        },
+        {
+          "distance": 9,
+          "azimuth": 77,
+          "inclination": 12,
+          "destination": "17",
+          "wasShotBackwards": false,
+          "index": 75,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "17",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 1,
+          "azimuth": 347,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 76,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 167,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 77,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 78,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 79,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "18",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 2,
+          "azimuth": 21,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 81,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 201,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 82,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 83,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 84,
+          "promotedFrom": []
+        },
+        {
+          "distance": 13,
+          "azimuth": 46,
+          "inclination": -19,
+          "destination": "19",
+          "wasShotBackwards": false,
+          "index": 85,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "19",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 1,
+          "azimuth": 316,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 86,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 136,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 87,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 88,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 89,
+          "promotedFrom": []
+        },
+        {
+          "distance": 5,
+          "azimuth": 68,
+          "inclination": -14,
+          "destination": "20",
+          "wasShotBackwards": false,
+          "index": 90,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "20",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 1,
+          "azimuth": 338,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 91,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 158,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 92,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 93,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 94,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "21",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 2,
+          "azimuth": 28,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 96,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 208,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 97,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 98,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 99,
+          "promotedFrom": []
+        },
+        {
+          "distance": 8,
+          "azimuth": 125,
+          "inclination": -16,
+          "destination": "22",
+          "wasShotBackwards": false,
+          "index": 100,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "22",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 3,
+          "azimuth": 35,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 101,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 215,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 102,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 103,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 104,
+          "promotedFrom": []
+        },
+        {
+          "distance": 12,
+          "azimuth": 67,
+          "inclination": 17,
+          "destination": "23",
+          "wasShotBackwards": false,
+          "index": 105,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "23",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 3,
+          "azimuth": 337,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 106,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 157,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 107,
+          "promotedFrom": []
+        },
+        {
+          "distance": 3,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 108,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 109,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "24",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 1,
+          "azimuth": 351,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 111,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 171,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 112,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 113,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 114,
+          "promotedFrom": []
+        },
+        {
+          "distance": 7,
+          "azimuth": 105,
+          "inclination": -7,
+          "destination": "25",
+          "wasShotBackwards": false,
+          "index": 115,
+          "promotedFrom": []
+        }
+      ]
+    },
+    {
+      "name": "25",
+      "eeDirection": "right",
+      "comment": "",
+      "legs": [
+        {
+          "distance": 2,
+          "azimuth": 15,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 116,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 195,
+          "inclination": 0,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 117,
+          "promotedFrom": []
+        },
+        {
+          "distance": 2,
+          "azimuth": 0,
+          "inclination": 90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 118,
+          "promotedFrom": []
+        },
+        {
+          "distance": 1,
+          "azimuth": 0,
+          "inclination": -90,
+          "destination": "-",
+          "wasShotBackwards": false,
+          "index": 119,
+          "promotedFrom": []
+        }
+      ]
+    }
+  ]
+}
