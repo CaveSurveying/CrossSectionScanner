@@ -270,6 +270,15 @@ Colours, firmware 0.7.1 (user 2026-11-24, after Link 8). Only lines had been dra
 - The Type picker has a row of SexyTopo's eight brush colours above the types (BrushColour.java). Picking a colour leaves the picker open, picking a type closes it. A stripe on the Type button shows the colour in use, and new lines take it. Lines of different colours don't join or snap, as PathDetail.canJoin.
 - Tests. tests/colours/test_colours.cpp (table-driven) and a colour check in tests/sketch.
 
+Redo and zoom on the drawing screen, firmware 0.7.2 (user 2026-11-24), zoom reworked in 0.7.3 (user 2026-11-25) as tap-to-zoom was hard to use and could not zoom out.
+
+- Layout. The two note lines under the view become a row of tools on the drawing screen, Undo, Redo, Move, + and -. Clear was dropped in 0.7.3 as not needed (SexyTopo has none either). Type, Cancel and Save share the bottom row. The message line names the scan on opening, then the line type, colour and zoom. The scan screen is unchanged.
+- Redo as SexyTopo. Undo keeps what it took back, Redo puts it back (a line or a join). A new line, Cancel and Save empty it.
+- Fit. x1 is the scan and its drawing fitted to the view, worked out when the scan is shown, when the drawing screen opens or closes and when - is held (0.6 s). It does not follow each new line, so the scale does not jump under the pen.
+- Zoom. + and - zoom x2 or half about the view centre, from x1/4 to x8. Zooming out leaves room to draw what the lidar did not reach. Snap and close distances stay in pixels, so are finer zoomed in, as SexyTopo. The grid goes to 0.25 m zoomed in close and 2 m zoomed well out.
+- Move. With Move on (orange) a drag on the view moves it and draws nothing, Move again to draw. Type also turns Move off, so the picker closes back to drawing. The view centre stays within a quarter of the view of the fitted box, so it cannot be lost. Redrawn every 0.15 s while dragging and when the pen lifts.
+- firmware/src/view_fit.cpp holds the fit, zoom and move, plain C++. Tests in tests/view_fit (table-driven) and redo checks in tests/sketch.
+
 ## Software
 
 - PlatformIO with the Arduino framework on the ESP32

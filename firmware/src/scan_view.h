@@ -3,6 +3,7 @@
 #include <cyd_display.h>
 
 #include "sketch.h"
+#include "view_fit.h"
 
 class ScanView {
  public:
@@ -13,13 +14,20 @@ class ScanView {
   // One line of scan text (see scan_store.h), T and P lines are used, others ignored
   void addLine(const String &line);
   int count() const { return pointCount; }
-  // Draw the scan in a size x size square at the top, with notes underneath, and keep that fit
+  // Fit the scan and the drawing into a size x size view at x1, kept until the next fit
+  void fit(int size, const Sketch &sketch);
+  // Draw the scan in the view at the top, with notes underneath, fitting the scan alone if not fitted
   void draw(cyd::Display &lcd, int size);
-  // Between screen pixels and sketch coordinates (sketch.h), using the fit of the last draw
-  Coord toSketch(int px, int py) const;
-  void toScreen(Coord c, int &px, int &py) const;
-  float metresPerPixel() const { return 1 / (scale * 1000); }
+  // Between screen pixels and sketch coordinates (sketch.h)
+  Coord toSketch(int px, int py) const { return view.toSketch(px, py); }
+  void toScreen(Coord c, int &px, int &py) const { view.toScreen(c, px, py); }
+  float metresPerPixel() const { return view.metresPerPixel(); }
   bool inView(int px, int py) const { return px >= 0 && px < size && py >= 0 && py < size; }
+  // Zoom and move, kept until the next fit, taking effect on the next draw
+  bool zoomIn() { return view.zoomIn(); }
+  bool zoomOut() { return view.zoomOut(); }
+  int zoomStep() const { return view.zoomStep(); }
+  void moveBy(float dx, float dy) { view.moveBy(dx, dy); }
 
  private:
   void addPoint(float deg, float mm);
@@ -30,6 +38,7 @@ class ScanView {
   Point points[MAX_POINTS];
   int pointCount = 0, turns = 0;
   String name;
-  int size = 0;                        // view size in px
-  float scale = 1, midX = 0, midY = 0;  // px per mm, and the scan point (mm) at the view centre
+  int size = 0;  // view size in px
+  ViewFit view;
+  bool needsFit = true;  // a new scan, not yet fitted
 };

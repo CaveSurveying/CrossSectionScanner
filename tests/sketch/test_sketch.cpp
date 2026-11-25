@@ -2,6 +2,7 @@
 //   g++ -std=c++11 -I../../firmware/src test_sketch.cpp ../../firmware/src/sketch.cpp -o /tmp/test_sketch && /tmp/test_sketch
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 #include <vector>
 
 #include "sketch.h"
@@ -106,8 +107,6 @@ int main() {
     Sketch s;
     stroke(s, {0, 0}, {1, 0});
     stroke(s, {0, 1}, {1, 1});
-    s.clear();
-    check(s.paths().empty() && s.undo() && s.paths().size() == 2, "undo of clear brings the lines back");
     check(s.undo() && s.undo() && !s.undo() && s.paths().empty(), "undo runs back to nothing");
   }
   {
@@ -122,7 +121,6 @@ int main() {
     s.forgetHistory();  // as saved, then the drawing screen opened again
     stroke(s, {1.01, 0}, {1, 1});
     stroke(s, {0, 1}, {-1, 1});
-    s.clear();
     stroke(s, {5, 5}, {6, 6});
     s.revert();
     check(s.paths().size() == 1 && s.paths()[0].points.size() == 2 && s.paths()[0].end() == Coord{1, 0} && !s.changed(),
@@ -185,6 +183,44 @@ int main() {
               LineTypeInfo::fromName("LAVA") == LineType::SKETCH && !LineTypeInfo::of(LineType::SKETCH).isSemantic() &&
               LineTypeInfo::of(LineType::SLOPE).isSemantic(),
           "line types by name");
+  }
+  {
+    // Each step undone and redone, Sketch.undo and redo as SexyTopo
+    struct Case {
+      const char *what;
+      void (*build)(Sketch &);
+    };
+    const Case cases[] = {
+        {"a line", [](Sketch &s) { stroke(s, {0, 0}, {1, 0}); }},
+        {"a join", [](Sketch &s) {
+           stroke(s, {0, 0}, {1, 0});
+           s.forgetHistory();
+           stroke(s, {1.02, 0.01}, {1, 1});
+         }},
+    };
+    for (const Case &c : cases) {
+      Sketch s;
+      c.build(s);
+      const std::vector<Sketch::Path> after = s.paths();
+      const bool undone = s.undo() && s.canRedo();
+      const bool redone = s.redo() && !s.canRedo() && s.changed();
+      bool same = s.paths().size() == after.size();
+      for (size_t i = 0; same && i < after.size(); i++) same = s.paths()[i].points == after[i].points;
+      std::string what = std::string("redo puts back ") + c.what;
+      check(undone && redone && same, what.c_str());
+    }
+  }
+  {
+    Sketch s;
+    stroke(s, {0, 0}, {1, 0});
+    s.undo();
+    stroke(s, {0, 1}, {1, 2});
+    check(!s.canRedo() && !s.redo() && s.paths().size() == 1, "a new line empties redo");
+    s.undo();
+    stroke(s, {0, 0}, {1, 0});
+    s.undo();
+    s.revert();
+    check(!s.canRedo() && s.paths().empty(), "revert empties redo");
   }
   std::printf("%d failed\n", failures);
   return failures ? EXIT_FAILURE : EXIT_SUCCESS;

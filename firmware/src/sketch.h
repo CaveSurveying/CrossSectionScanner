@@ -76,16 +76,24 @@ class Sketch {
   // the ends snap to the ends of lines of the same type within snapDistance, and it is simplified.
   // A tap leaves a dot, but a line of any type but SKETCH smaller than minimumSize is dropped.
   void finishPath(float snapDistance, float minimumSize = 0);
-  // Undo the last step (a line, a join or a clear), false if there is nothing to undo
+  // Undo the last step (a line or a join), false if there is nothing to undo
   bool undo();
-  void clear();
+  // Put back the last step undone, false if there is none. A new line empties redo.
+  bool redo();
+  bool canRedo() const { return !undone.empty(); }
   void forget();  // drop everything, history too, for a different scan
   void setPaths(const std::vector<Path> &paths);  // lines read back, with no history
   void setExtras(const Extras &extras) { kept = extras; }
   const Extras &extras() const { return kept; }
   bool changed() const { return !history.empty(); }
-  void forgetHistory() { history.clear(); }  // undo goes back only to here
-  void revert() { while (undo()) {} }        // back to how it was when the history began
+  void forgetHistory() {  // undo goes back only to here
+    history.clear();
+    undone.clear();
+  }
+  void revert() {  // back to how it was when the history began
+    while (undo()) {}
+    undone.clear();
+  }
 
   const std::vector<Path> &paths() const { return finished; }
   const Path *activePath() const { return active ? &current : nullptr; }
@@ -105,6 +113,7 @@ class Sketch {
   std::vector<Path> finished;
   Extras kept;
   std::vector<Step> history;
+  std::vector<std::pair<Step, std::vector<Path>>> undone;  // each with the lines it had added
   Path current;
   bool active = false;
 };

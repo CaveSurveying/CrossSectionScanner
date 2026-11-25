@@ -330,22 +330,29 @@ void Sketch::apply(Step step, const Path &added) {
   for (auto it = step.removed.rbegin(); it != step.removed.rend(); ++it) finished.erase(finished.begin() + it->first);
   if (step.added) finished.push_back(added);
   history.push_back(step);
+  undone.clear();
 }
 
 bool Sketch::undo() {
   if (history.empty()) return false;
   const Step &step = history.back();
+  std::vector<Path> added(finished.end() - step.added, finished.end());
   finished.resize(finished.size() - step.added);
   for (const std::pair<int, Path> &r : step.removed) finished.insert(finished.begin() + r.first, r.second);  // in order of position
+  undone.push_back({step, added});
   history.pop_back();
   return true;
 }
 
-void Sketch::clear() {
-  if (finished.empty()) return;
-  Step step;
-  for (int i = 0; i < (int)finished.size(); i++) step.removed.push_back({i, finished[i]});
-  apply(step, {});
+bool Sketch::redo() {
+  if (undone.empty()) return false;
+  const Step &step = undone.back().first;
+  // removed is in order of position, as apply left it
+  for (auto it = step.removed.rbegin(); it != step.removed.rend(); ++it) finished.erase(finished.begin() + it->first);
+  for (const Path &p : undone.back().second) finished.push_back(p);
+  history.push_back(step);
+  undone.pop_back();
+  return true;
 }
 
 void Sketch::setPaths(const std::vector<Path> &paths) {
@@ -357,6 +364,7 @@ void Sketch::forget() {
   finished.clear();
   kept = Extras();
   history.clear();
+  undone.clear();
   current.points.clear();
   active = false;
 }

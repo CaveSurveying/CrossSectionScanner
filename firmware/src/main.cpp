@@ -3,7 +3,8 @@
 // vertical or horizontal and facing on or back, then Accept), so it is sent to SexyTopo over
 // Bluetooth (link.h),
 // and Draw opens the drawing screen for the scan shown, where Type picks the colour and kind of line
-// (as SexyTopo's), Save keeps the drawing and Cancel puts it back as it was. Drawings edited in
+// (as SexyTopo's), Undo, Redo, Move (then drag the view), + and - (held to fit) sit under the view,
+// Save keeps the drawing and Cancel puts it back as it was. Drawings edited in
 // SexyTopo come back and are shown in their colours, with its text, symbols and areas, though only
 // lines can be edited here.
 // A computer on the USB port can watch, ask for scans and fetch saved ones for debugging
@@ -60,9 +61,12 @@ constexpr int DRAW_X = 200, DRAW_W = 36;
 constexpr int STN_COLS = 2, STN_ROWS = 4, STN_CELL_W = VIEW / STN_COLS, STN_CELL_H = VIEW / (STN_ROWS + 2);
 // Station picker buttons in place of the scan screen's
 constexpr int PICK_CANCEL_X = 4, ACCEPT_X = 124, PICK_BTN_W = 112;
-// Drawing screen buttons
-constexpr int UNDO_X = 2, CLEAR_X = 45, TYPE_X = 88, CANCEL_X = 157, SAVE_X = 200;
-constexpr int EDIT_W = 40, TYPE_W = 66;
+// Drawing screen, a row of tools in place of the notes under the view, then Type, Cancel and Save
+constexpr int TOOL_Y = VIEW, TOOL_H = ScanView::NOTES_H, TOOL_W = VIEW / 5;
+constexpr int UNDO_X = 0, REDO_X = TOOL_W, MOVE_X = 2 * TOOL_W, ZOOM_IN_X = 3 * TOOL_W, ZOOM_OUT_X = 4 * TOOL_W;
+constexpr unsigned long LONG_PRESS_MS = 600;  // holding - fits the scan and drawing
+constexpr unsigned long MOVE_REDRAW_MS = 150;  // while dragging the view
+constexpr int TYPE_X = 2, CANCEL_X = 82, SAVE_X = 162, EDIT_W = 76;
 // Line type picker over the view, a row of brush colours then the types in two columns
 constexpr int SWATCH_H = 32, SWATCH_W = VIEW / colours::BRUSH_COUNT;
 constexpr int PICK_W = VIEW / 2, PICK_H = (VIEW - SWATCH_H) / ((LineTypeInfo::COUNT + 1) / 2);
@@ -83,6 +87,9 @@ bool storeOk = false;
 bool scanning = false;
 bool drawing = false;  // drawing screen open
 bool picking = false;  // line type picker open on the drawing screen
+bool moving = false;  // Move on, the pen moves the view instead of drawing
+bool zoomOutHeld = false;  // - pressed, zooms out when let go or fits when held
+unsigned long zoomOutPressedAt = 0;
 LineType lineType = LineType::SKETCH;  // for the next line drawn
 int brush = 0;                          // colours::BRUSHES, for the next line drawn
 int shown = -1;        // saved scan on the screen, -1 for none
@@ -95,20 +102,40 @@ bool pickHorizontal = false, pickBack = false;  // for the station picked
 uint16_t brushColour() { return colours::of(colours::BRUSHES[brush].name); }
 String pickedStation;  // to be given on Accept, empty for no station
 
-bool inside(int x, int y, int bx, int bw) { return x >= bx && x < bx + bw && y >= BTN_Y && y < BTN_Y + BTN_H; }
+bool inside(int x, int y, int bx, int bw, int by = BTN_Y, int bh = BTN_H) {
+  return x >= bx && x < bx + bw && y >= by && y < by + bh;
+}
+bool insideTool(int x, int y, int bx) { return inside(x, y, bx, TOOL_W, TOOL_Y, TOOL_H); }
 
 // Large text if it fits the button, small if not, on two lines if it still doesn't fit
-void drawButton(int x, int w, bool active, uint16_t colour, const char *text) {
-  lcd.fillRoundRect(x, BTN_Y, w, BTN_H, 8, active ? colour : TFT_DARKGREY);
+void drawButton(int x, int w, bool active, uint16_t colour, const char *text, int y = BTN_Y, int h = BTN_H) {
+  lcd.fillRoundRect(x, y, w, h, std::min(8, h / 3), active ? colour : TFT_DARKGREY);
   lcd.setTextSize(2);
   if (lcd.textWidth(text) > w - 6) lcd.setTextSize(1);
   const char *space = strchr(text, ' ');
   if (lcd.textWidth(text) <= w - 6 || !space) {
-    lcd.drawString(text, x + w / 2, BTN_Y + BTN_H / 2);
+    lcd.drawString(text, x + w / 2, y + h / 2);
     return;
   }
-  lcd.drawString(String(text).substring(0, space - text), x + w / 2, BTN_Y + BTN_H / 2 - 5);
-  lcd.drawString(space + 1, x + w / 2, BTN_Y + BTN_H / 2 + 5);
+  lcd.drawString(String(text).substring(0, space - text), x + w / 2, y + h / 2 - 5);
+  lcd.drawString(space + 1, x + w / 2, y + h / 2 + 5);
+}
+
+void drawTool(int x, bool active, uint16_t colour, const char *text) {
+  drawButton(x + 1, TOOL_W - 2, active, colour, text, TOOL_Y + 1, TOOL_H - 2);
+}
+
+// The drawing screen's tools, over the notes under the view, all but Type off while picking
+void drawToolRow() {
+  lcd.fillRect(0, TOOL_Y, VIEW, TOOL_H, TFT_BLACK);
+  lcd.setTextColor(TFT_WHITE);
+  lcd.setTextDatum(middle_center);
+  drawTool(UNDO_X, !picking && sketch.changed(), TFT_NAVY, "Undo");
+  drawTool(REDO_X, !picking && sketch.canRedo(), TFT_NAVY, "Redo");
+  drawTool(MOVE_X, !picking, moving ? TFT_ORANGE : TFT_NAVY, "Move");
+  drawTool(ZOOM_IN_X, !picking && scanView.zoomStep() < ViewFit::MAX_STEP, TFT_NAVY, "+");
+  drawTool(ZOOM_OUT_X, !picking, TFT_NAVY, "-");  // held, it fits at any zoom
+  lcd.setTextDatum(top_left);
 }
 
 void drawButtons() {
@@ -116,10 +143,11 @@ void drawButtons() {
   lcd.setTextColor(TFT_WHITE);
   lcd.setTextDatum(middle_center);
   if (drawing) {  // only Type while picking
-    drawButton(UNDO_X, EDIT_W, !picking && sketch.changed(), TFT_NAVY, "Undo");
-    drawButton(CLEAR_X, EDIT_W, !picking && !sketch.paths().empty(), TFT_MAROON, "Clear");
-    drawButton(TYPE_X, TYPE_W, true, picking ? TFT_ORANGE : TFT_PURPLE, LineTypeInfo::of(lineType).label);
-    lcd.fillRect(TYPE_X + 10, BTN_Y + BTN_H - 7, TYPE_W - 20, 3, brushColour());  // the colour in use
+    drawToolRow();
+    lcd.setTextColor(TFT_WHITE);
+    lcd.setTextDatum(middle_center);
+    drawButton(TYPE_X, EDIT_W, true, picking ? TFT_ORANGE : TFT_PURPLE, LineTypeInfo::of(lineType).label);
+    lcd.fillRect(TYPE_X + 10, BTN_Y + BTN_H - 7, EDIT_W - 20, 3, brushColour());  // the colour in use
     drawButton(CANCEL_X, EDIT_W, !picking, TFT_NAVY, "Cancel");
     drawButton(SAVE_X, EDIT_W, !picking, TFT_DARKGREEN, "Save");
   } else if (choosingStation) {
@@ -221,6 +249,9 @@ void drawExtras() {
   }
 }
 
+// The scan and its drawing fitted at x1, then drawn
+void fitView() { scanView.fit(VIEW, sketch); }
+
 // Scan with its sketch over it, in the view
 void drawView() {
   scanView.draw(lcd, VIEW);
@@ -228,6 +259,7 @@ void drawView() {
   drawExtras();
   for (const Sketch::Path &p : sketch.paths()) drawPath(p);
   lcd.clearClipRect();
+  if (drawing) drawToolRow();  // over the notes
 }
 
 void showSaved(int i) {
@@ -236,6 +268,7 @@ void showSaved(int i) {
   sketch.forget();
   sketchRevision = 0;
   store.loadSketch(store.name(i), sketch, sketchRevision);
+  fitView();
   drawView();
   drawButtons();
   showLinkState();
@@ -263,17 +296,26 @@ void drawPicker() {
 }
 
 String lineDescription() {
-  return String(LineTypeInfo::of(lineType).label) + " lines, " + colours::BRUSHES[brush].label;
+  String text = String(LineTypeInfo::of(lineType).label) + " lines, " + colours::BRUSHES[brush].label;
+  const int step = scanView.zoomStep();
+  if (step > 0) text += String(", zoom x") + (1 << step);
+  if (step < 0) text += String(", zoom x1/") + (1 << -step);
+  return text;
 }
 
+// What the pen does on the view
+String toolMessage() { return moving ? "Drag to move, Move again to draw" : lineDescription(); }
+
+// Opening turns Move off, so closing goes back to drawing
 void showPicker(bool open) {
   picking = open;
   if (open) {
+    moving = false;
     drawPicker();
     showMessage("Pick the colour and type of line");
   } else {
     drawView();
-    showMessage(lineDescription());
+    showMessage(toolMessage());
   }
   drawButtons();
 }
@@ -405,8 +447,10 @@ void acceptStation() {
 
 void openDrawing() {
   drawing = true;
+  moving = false;
+  fitView();
   drawView();
-  showMessage("Draw round the scan with the stylus");
+  showMessage(String("Drawing ") + (shown >= 0 ? store.name(shown) : String("the scan")) + ", " + lineDescription());
   drawButtons();
 }
 
@@ -421,6 +465,7 @@ void cancelDrawing() {
   const bool changed = sketch.changed();
   sketch.revert();
   drawing = false;
+  fitView();
   drawView();
   drawButtons();
   if (changed) showMessage("Drawing not changed");
@@ -431,6 +476,7 @@ void cancelDrawing() {
 // Save the drawing if it changed, undo goes back only to here
 void saveDrawing() {
   drawing = false;
+  fitView();
   drawView();
   drawButtons();
   if (!sketch.changed()) {
@@ -582,22 +628,60 @@ void pressScanScreen(int x, int y) {
 }
 
 void pressDrawingButtons(int x, int y) {
-  if (inside(x, y, TYPE_X, TYPE_W)) {
+  if (inside(x, y, TYPE_X, EDIT_W)) {
     showPicker(!picking);
     return;
   }
   if (picking) return;
-  if (inside(x, y, UNDO_X, EDIT_W) && sketch.undo()) {  // nothing before the drawing was opened
+  if ((insideTool(x, y, UNDO_X) && sketch.undo()) ||  // nothing before the drawing was opened
+      (insideTool(x, y, REDO_X) && sketch.redo())) {
     drawView();
     drawButtons();
   }
-  if (inside(x, y, CLEAR_X, EDIT_W) && !sketch.paths().empty()) {
-    sketch.clear();
+  if (insideTool(x, y, MOVE_X)) {
+    moving = !moving;
+    drawToolRow();
+    showMessage(toolMessage());
+  }
+  if (insideTool(x, y, ZOOM_IN_X) && scanView.zoomIn()) {
     drawView();
-    drawButtons();
+    showMessage(lineDescription());
+  }
+  if (insideTool(x, y, ZOOM_OUT_X)) {
+    zoomOutHeld = true;
+    zoomOutPressedAt = millis();
   }
   if (inside(x, y, CANCEL_X, EDIT_W)) cancelDrawing();
   if (inside(x, y, SAVE_X, EDIT_W)) saveDrawing();
+}
+
+// - zooms out when let go, or fits the scan and drawing at x1 once held
+void holdZoomOut(bool touched) {
+  if (touched && millis() - zoomOutPressedAt < LONG_PRESS_MS) return;
+  zoomOutHeld = false;
+  if (touched) fitView();
+  else if (!scanView.zoomOut()) return;
+  drawView();
+  showMessage(lineDescription());
+}
+
+// Pen on the view with Move on, the view follows it, drawn a few times a second and when the pen lifts
+void penMoving(bool touched, int x, int y) {
+  static int lastX, lastY;
+  static bool dragging = false, behind = false;  // behind, moved since last drawn
+  static unsigned long drawnAt = 0;
+  const bool onView = touched && scanView.inView(x, y);
+  if (onView && dragging && (x != lastX || y != lastY)) {
+    scanView.moveBy(x - lastX, y - lastY);
+    behind = true;
+  }
+  dragging = onView;
+  lastX = x, lastY = y;
+  if (behind && (!dragging || millis() - drawnAt >= MOVE_REDRAW_MS)) {
+    drawView();
+    drawnAt = millis();
+    behind = false;
+  }
 }
 
 // Pen on the drawing screen, a line follows the pen while it stays in the view
@@ -607,7 +691,7 @@ void penOnDrawing(bool touched, int x, int y) {
   if (sketch.activePath() && !onView) {
     sketch.finishPath(SNAP_PX * scanView.metresPerPixel(), MIN_LINE_PX * scanView.metresPerPixel());
     drawView();  // the line as finished, snapped and simplified
-    drawButtons();  // Clear may now be possible
+    drawButtons();  // Undo may now be possible
   } else if (onView && !sketch.activePath()) {
     sketch.startPath(scanView.toSketch(x, y), lineType, colours::BRUSHES[brush].name);
     lcd.drawPixel(x, y, brushColour());
@@ -632,7 +716,9 @@ void readTouch() {
     else if (pressed && inside(x, y, PICK_CANCEL_X, PICK_BTN_W)) showStationPicker(false);
     else if (pressed && inside(x, y, ACCEPT_X, PICK_BTN_W)) acceptStation();
   } else if (drawing) {
-    penOnDrawing(touched, x, y);
+    if (zoomOutHeld) holdZoomOut(touched);
+    else if (moving) penMoving(touched, x, y);
+    else penOnDrawing(touched, x, y);
     if (pressed && !scanView.inView(x, y)) pressDrawingButtons(x, y);
   } else if (pressed) {
     pressScanScreen(x, y);

@@ -10,7 +10,7 @@
 
 class Link {
  public:
-  static constexpr const char *FIRMWARE = "0.7.1";
+  static constexpr const char *FIRMWARE = "0.7.3";
 
   // beingDrawn says whether a scan's drawing screen is open, so SexyTopo's drawing waits
   void begin(ScanStore &store, bool (*beingDrawn)(const String &scan));

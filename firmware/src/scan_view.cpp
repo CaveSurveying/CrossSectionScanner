@@ -16,6 +16,7 @@ uint16_t turnColour(int turn) {
 void ScanView::clear(const String &newName) {
   name = newName;
   pointCount = turns = 0;
+  needsFit = true;
 }
 
 void ScanView::addLine(const String &line) {
@@ -31,37 +32,36 @@ void ScanView::addPoint(float deg, float mm) {
   points[pointCount++] = {(int16_t)(-mm * sinf(a)), (int16_t)(mm * cosf(a)), (uint8_t)(turns - 1)};
 }
 
+// The scan's own extent (not the lidar) with the drawing, keeping the scale equal both ways
+void ScanView::fit(int viewSize, const Sketch &sketch) {
+  ViewFit::Box box;
+  for (int i = 0; i < pointCount; i++) box.add(points[i].x, points[i].y);
+  box.add(sketch);
+  view.fit(viewSize, box, MARGIN);
+  needsFit = false;
+}
+
 void ScanView::draw(cyd::Display &lcd, int viewSize) {
   size = viewSize;
   lcd.fillRect(0, 0, size, size + NOTES_H, TFT_BLACK);
 
-  // Fit the scan's own extent (not the lidar) into the view, keeping the scale equal both ways
-  int minX = 0, maxX = 0, minY = 0, maxY = 0;
-  for (int i = 0; i < pointCount; i++) {
-    const Point &p = points[i];
-    if (i == 0) minX = maxX = p.x, minY = maxY = p.y;
-    minX = min(minX, (int)p.x), maxX = max(maxX, (int)p.x);
-    minY = min(minY, (int)p.y), maxY = max(maxY, (int)p.y);
-  }
-  const int span = max(max(maxX - minX, maxY - minY), 200);
-  scale = size * (1 - 2 * MARGIN) / span;
-  midX = (minX + maxX) / 2.0, midY = (minY + maxY) / 2.0;
-  auto sx = [&](float x) { return (int)(size / 2 + (x - midX) * scale); };
-  auto sy = [&](float y) { return (int)(size / 2 - (y - midY) * scale); };
+  if (needsFit) fit(size, Sketch());
+  auto sx = [&](float x) { return (int)lroundf(view.screenX(x)); };
+  auto sy = [&](float y) { return (int)lroundf(view.screenY(y)); };
 
-  // Grid through the lidar, 1 m or 0.5 m for small scans
-  const int grid = span < 3000 ? 500 : 1000;
-  const float half = size / 2 / scale;  // mm from the view centre to its edge
-  for (int g = floorf((midX - half) / grid) * grid; g <= midX + half; g += grid)
+  // Grid through the lidar, 1 m, 0.5 m for small scans, 0.25 m zoomed in close, 2 m zoomed well out
+  const float shown = view.visibleSpan() * (1 - 2 * MARGIN);  // as the fit's span at x1
+  const int grid = view.zoomStep() > 0 && shown < 1500 ? 250 : shown < 3000 ? 500 : shown < 12000 ? 1000 : 2000;
+  lcd.setClipRect(0, 0, size, size);  // zoomed or moved, much of the scan is outside the view
+  for (int g = floorf(view.mmX(0) / grid) * grid; g <= view.mmX(size); g += grid)
     lcd.drawFastVLine(sx(g), 0, size, g == 0 ? AXIS_COLOUR : GRID_COLOUR);
-  for (int g = floorf((midY - half) / grid) * grid; g <= midY + half; g += grid)
+  for (int g = floorf(view.mmY(size) / grid) * grid; g <= view.mmY(0); g += grid)
     lcd.drawFastHLine(0, sy(g), size, g == 0 ? AXIS_COLOUR : GRID_COLOUR);
 
   for (int i = 0; i < pointCount; i++) lcd.fillRect(sx(points[i].x) - 1, sy(points[i].y) - 1, 2, 2, turnColour(points[i].turn));
 
   // Lidar and its 0° direction
   const int lx = sx(0), ly = sy(0);
-  lcd.setClipRect(0, 0, size, size);
   lcd.drawLine(lx - 5, ly, lx + 5, ly, TFT_RED);
   lcd.drawLine(lx, ly - 5, lx, ly + 5, TFT_RED);
   lcd.fillTriangle(lx, ly - 18, lx - 4, ly - 10, lx + 4, ly - 10, TFT_RED);
@@ -74,15 +74,5 @@ void ScanView::draw(cyd::Display &lcd, int viewSize) {
   lcd.print(name);
   lcd.setCursor(4, size + 13);
   if (turns > 1) lcd.printf("%d turns, ", turns);
-  lcd.printf("%d points, grid %.1f m", pointCount, grid / 1000.0);
-}
-
-// Scan points are mm with y up, sketch coordinates metres with y down
-Coord ScanView::toSketch(int px, int py) const {
-  return {(midX + (px - size / 2) / scale) / 1000, -(midY - (py - size / 2) / scale) / 1000};
-}
-
-void ScanView::toScreen(Coord c, int &px, int &py) const {
-  px = lroundf(size / 2 + (c.x * 1000 - midX) * scale);
-  py = lroundf(size / 2 - (-c.y * 1000 - midY) * scale);
+  lcd.printf("%d points, grid %g m", pointCount, grid / 1000.0);
 }
