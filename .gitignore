@@ -1,3 +1,6 @@
 .pio/
 __pycache__/
 scans/
+hardware/case/stl/
+*.FCBak
+*.FCStd1

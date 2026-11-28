@@ -63,6 +63,23 @@ GY-85, chosen 2026-11-22 (the user has one). Raw sensors on I2C, no fusion on bo
 - A few degrees of heading is enough for a section. SexyTopo can work the direction out from the legs anyway. Tilt matters more, to know the scan plane is vertical.
 - Others considered. BNO085, on-chip fusion and self-calibration, but its I2C clock stretching doesn't work well with the ESP32 (UART or SPI would), and its calibration can't be seen or controlled and adapts in use. BNO055, similar I2C trouble. ICM-20948, raw sensors like the GY-85.
 
+#### Calibration method (proposed 2026-11-28, to settle before the case is finalised)
+
+- Two stages, so nothing magnetic depends on a room. Rooms (steel in floors, wiring, radiators) distort the field, so the compass is never calibrated indoors.
+- Stage 1, sensors, outdoors away from cars, buildings and steel (a field, or the cave entrance). The device is turned through every orientation and held still at about 50 of them, with the motor stopped as for a scan. Accelerometer offsets and scale come from gravity always being 1 g. Compass hard and soft iron come from the field strength being constant, and the compass's alignment to the accelerometer from the dip (the angle between the field and gravity) being constant. No reference and no fixture.
+- Stage 2, lidar alignment, using only the accelerometer and the lidar, so room magnetics don't matter. On a flat floor the device is held still at many tilts and rolls, each pose giving a scan and an accelerometer reading. The floor (and the ceiling if in range) is a straight line in the scan, and it must be at right angles to gravity. Enough varied poses give the three angles between the accelerometer and the lidar (scan plane and 0°) as the lidar is actually mounted, including the 90° cable-left turn. Poses with the scan plane well off vertical are needed to fix the tilt. Poses facing opposite ways let the floor's own slope be fitted and removed.
+- The scan plane's heading then comes from the chain lidar to accelerometer (stage 2) and accelerometer to compass (stage 1).
+- Checks afterwards, outdoors. Held still and rolled about the lidar axis, the axis tilt and heading should not change. The spread of each fit is shown as a quality figure, as the DistoX does.
+- All calibration readings are kept, so the fit can be redone off the device.
+- No datum faces or cradle are needed on the case. Resting the case on flat faces parallel to the lidar axis was considered and dropped, as it is only as good as the print and the lidar's seat on its plate (about a degree).
+- Simulated 2026-11-28 (tools/calib_sim.py, the fit in tools/calib_stage2.py, so the device's fit can follow it). Errors put in are the lidar range (10 mm), a floor sloping 0.5°, accelerometer bias, scale and noise left from stage 1 (2 mg, 0.2%, 1 mg), mounting up to a few degrees, and the hand moving between the turn and the accelerometer reading. 95th percentile results are below.
+  - Guided poses beat random ones by about three times. The screen asks for the scan plane alternately about 45° either side of vertical, the roll stepped round, and each pose taken again turned round (which removes the floor's slope).
+  - 24 guided poses at 45°, held still, give 0.07° plane tilt and 0.05° roll. With the hand moving 0.3° it is 0.3° tilt and 0.2° roll, so hand movement dominates. Reading the accelerometer during the same turn as the scan (not before or after), or resting the device, keeps it small.
+  - 15° tilts are too small (0.6° to 1.4°). 60° often leaves too little floor in a 3 m room, so about 45° is best.
+  - The floor slope, lidar noise and accelerometer errors left are each 0.1° or less.
+- Not simulated, to check on the bench. Whether the lidar's beam is truly at right angles to its spin axis (a cone would bend the floor line), range bias at grazing angles on the floor, and picking the floor out from walls and furniture in a real scan.
+- Nothing in this changes the case. A box or table to rest the device on helps but is not needed.
+
 ### Power and case (later)
 
 - LiPo with charger and 5 V boost (the CYD has no battery charging)
@@ -71,6 +88,22 @@ GY-85, chosen 2026-11-22 (the user has one). Raw sensors on I2C, no fusion on bo
 - a physical button as well as the screen button is worth considering for muddy hands
 - Decided 2026-11-24. Start with one 18650 (2800 mAh), the box sized for two in parallel later. Parallel only, never series (the board's battery socket and TP4054 are for one cell). Not protected cells, the user considers their protection circuits a fire risk. The 3.5" E32R35T is 55.5 × 101.5 mm, 5.8 mm deep at the screen (LCDwiki), more behind for the ESP32 module and plugs, so measure before buying a box.
 - Push button, wanted 2026-11-24. Long press turns the unit on and off, short press scans when on. Needs a soft power circuit (or deep sleep with the boost converter switched off) and a free GPIO, still to design.
+
+### Printed case
+
+Agreed 2026-11-27 from sketches, printed on the XYZprinting da Vinci Pro (200 mm build assumed). Any PCB is done in KiCad, the case in FreeCAD. Everything in hardware/ is under the CERN-OHL-S-2.0 (hardware/LICENSE.txt), the rest of the repository under the GPL-3.0.
+
+- In-line layout. The lidar is on the front end with its axis along the body, the screen is on top with the scan view at the lidar end, and the handle is at the back. A pistol grip was considered and dropped.
+- Keeping the IMU clear of the motor, cells and current matters far more than balance. The IMU stands upright on short standoffs from the inside of the tail end wall (it works in any orientation, the calibration finds the alignment), about 176 mm from the motor and 83 mm from the cells.
+- The outside is two parts plus the lidar plate, to keep joins few. The main part (screen side) carries everything (lidar plate, IMU, button, USB-C, cells and board). The lid underneath is bare, so opening it moves nothing and needs no recalibration.
+- Inside, a board frame and two cell straps clamp the board and both cells, screwed to bosses in the main part. Cells are tabbed and soldered into a pack, charged in place, never swapped.
+- The handle shares the head's height (44 mm) but is narrower (36 against 56), so both outer parts print flat without supports.
+- Thumb button on the handle top. USB-C with a screw cap on the right side of a bay at the back of the head, not in the tail (too near the IMU). The boost converter is in the same bay.
+- The lidar is screwed to a plate with a cup round its base (below the optical head). The plate is fixed to the main part from inside before the board and cells go in. The lidar cable leaves the side of the base beside the 0° mark, so the lidar is turned with the cable to the left and the firmware turns the scan 90°. The cable leaves the cup through a slot, bends back under a hood and enters a sealed side pod through a brass PG7 gland about 35 mm from the exit. The pod and hood are part of the main part, so the outside stays two parts plus the plate. The 5-pin plug won't pass the gland, so it is fitted after the cable is through.
+- Screen sealing by a sealed film, still to work out.
+- For calibration (agreed 2026-11-28) the path from the IMU to the lidar must stay rigid, and nothing magnetic near the IMU may move. The next CAD pass adds a rib or spine inside the main part joining the head and tail, so it is stiff in twist without the lid. The lidar plate is located on pins or a spigot, not only by screws in clearance holes, and the plate and lid seat on hard faces with the gasket only filling its groove. Near the IMU only non-magnetic fixings (brass inserts, brass or nylon screws), a non-magnetic lanyard fixing, and a plastic or brass USB cap. Fixed steel further away (the cell strap screws, the cell cans) is calibrated out, so the straps must hold the cells tight. PETG or ASA, not PLA, which creeps.
+- hardware/case/build_case.py builds hardware/case/scanner_case.FCStd (sizes in its Params spreadsheet), the STLs in print orientation, and checks fit, clashes, the scan plane and the IMU distances. Once the FCStd is edited by hand it is the source.
+- To measure before printing: board depth behind the screen and its USB-C position, the screen window position, the IMU holes, the lidar optical head diameter, the USB-C socket and boost module, the PG7 gland, and the cable's exit height and boot size.
 
 ## How a scan works
 
